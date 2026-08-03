@@ -91,6 +91,37 @@ function testNoSchemasFailsAndRemovesPackage() returns error? {
 }
 
 @test:Config {}
+function testCallerProvidedEmptyDirectoryIsKeptButEmptied() returns error? {
+    [string, string] [schemaPath, outputPath] = check prepareLibgenDirs();
+    // The caller pre-creates the package directory, so cleanup must empty it, not remove it.
+    string libPath = check file:joinPath(outputPath, "providedlib");
+    check file:createDir(libPath, file:RECURSIVE);
+
+    error? result = runLibgen(schemaPath, outputPath, "providedlib");
+    test:assertTrue(result is error, "An empty schema folder must fail the run");
+    test:assertTrue(check file:test(libPath, file:EXISTS),
+            "A caller-provided directory must not be removed");
+    file:MetaData[] leftovers = check file:readDir(libPath);
+    test:assertEquals(leftovers.length(), 0, "The caller-provided directory should be left empty");
+}
+
+@test:Config {}
+function testNonEmptyTargetIsNeverCleanedUp() returns error? {
+    [string, string] [schemaPath, outputPath] = check prepareLibgenDirs();
+    check io:fileWriteJson(check file:joinPath(schemaPath, "SIMPLE.json"), plainSchemaJson);
+    // Pre-existing content belongs to the caller and must survive the rejected run.
+    string libPath = check file:joinPath(outputPath, "occupiedlib");
+    check file:createDir(libPath, file:RECURSIVE);
+    string preExisting = check file:joinPath(libPath, "mine.txt");
+    check io:fileWriteString(preExisting, "do not delete me");
+
+    error? result = runLibgen(schemaPath, outputPath, "occupiedlib");
+    test:assertTrue(result is error, "A non-empty target directory must be rejected");
+    test:assertTrue(check file:test(preExisting, file:EXISTS),
+            "Content this run did not write must never be removed");
+}
+
+@test:Config {}
 function testOutputDirectoryIsNotRemovedOnFailure() returns error? {
     [string, string] [schemaPath, outputPath] = check prepareLibgenDirs();
     // Cleanup must remove only the generated package, never the output folder around it.

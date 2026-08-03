@@ -26,6 +26,12 @@ public type LibData record {|
 
     boolean versioned;
     string libPath = "";
+    // Set once this run has taken ownership of libPath, by creating it or by finding it empty.
+    // Only then may a failed run clean up, and only what this run wrote.
+    boolean libDirClaimed = false;
+    // Set when this run created libPath, so cleanup can remove the directory itself rather
+    // than leaving a caller-provided one behind.
+    boolean libDirCreated = false;
     string importsBlock = "";
     string exportsBlock = "";
     string enumBlock = "";
@@ -46,14 +52,18 @@ public type LibData record {|
 # + libdata - Data structure containing the following inputs for the library: orgName, libName, outputPath, schemaPath
 # + return - Returns error if library generation is not successful
 public function generateLibrary(LibData libdata) returns error? {
-    check createLibStructure(libdata);
-    error? generationResult = generatePackageContent(libdata);
-    if generationResult is error {
+    error? result = buildPackage(libdata);
+    if result is error {
         // Nothing usable was produced, so the half-written package is removed rather than
         // left behind without a Ballerina.toml.
         removePartialLibrary(libdata);
-        return generationResult;
+        return result;
     }
+}
+
+function buildPackage(LibData libdata) returns error? {
+    check createLibStructure(libdata);
+    check generatePackageContent(libdata);
 }
 
 function generatePackageContent(LibData libdata) returns error? {
@@ -77,18 +87,34 @@ function generatePackageContent(LibData libdata) returns error? {
     }
 }
 
-# Removes the package directory created for this run. Only the generated package directory is
-# removed, never the output directory it sits in, which may hold unrelated content.
+# Removes what this run wrote into the package directory. Only content this run created is
+# removed: never the output directory it sits in, and never a directory the caller provided,
+# which is emptied but kept.
 #
 # + libdata - Data structure holding the generated library path
 function removePartialLibrary(LibData libdata) {
-    if libdata.libPath == "" {
+    if !libdata.libDirClaimed || libdata.libPath == "" {
         return;
     }
-    file:Error? removed = file:remove(libdata.libPath, file:RECURSIVE);
+    if libdata.libDirCreated {
+        reportFailedRemoval(libdata.libPath, file:remove(libdata.libPath, file:RECURSIVE));
+        return;
+    }
+    // The caller provided an empty directory, so it is restored to that state rather than removed.
+    file:MetaData[]|file:Error entries = file:readDir(libdata.libPath);
+    if entries is file:Error {
+        reportFailedRemoval(libdata.libPath, entries);
+        return;
+    }
+    foreach file:MetaData entry in entries {
+        reportFailedRemoval(entry.absPath, file:remove(entry.absPath, file:RECURSIVE));
+    }
+}
+
+function reportFailedRemoval(string path, file:Error? removed) {
     if removed is file:Error {
-        io:fprintln(io:stderr, string `WARNING: could not remove the incomplete package at ` +
-                string `${libdata.libPath}: ${removed.message()}`);
+        io:fprintln(io:stderr, string `WARNING: could not remove ${path} from the incomplete ` +
+                string `package: ${removed.message()}`);
     }
 }
 
@@ -97,11 +123,14 @@ function createLibStructure(LibData libdata) returns error? {
     if check file:test(libdata.libPath, file:EXISTS) {
         file:MetaData[] files = check file:readDir(libdata.libPath);
         if files.length() > 0 {
+            // The directory holds content this run did not write, so it is never cleaned up.
             return error(string `Target library path ${libdata.libPath} is not empty. Please provide an empty directory to create the library.`);
         }
     } else {
         check file:createDir(libdata.libPath, file:RECURSIVE);
+        libdata.libDirCreated = true;
     }
+    libdata.libDirClaimed = true;
     libdata.exportsBlock = "\"" + libdata.libName + "\"";
     check copyNonTemplatedFiles(libdata);
 }

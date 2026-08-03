@@ -113,6 +113,7 @@ final class EdiCmdUtils {
      */
     static void runEdiTool(List<String> toolArgs) {
         Path toolJar = null;
+        Process process = null;
         try {
             toolJar = extractEdiTool();
             List<String> command = new ArrayList<>(List.of("bal", "run", toolJar.toAbsolutePath().toString()));
@@ -120,7 +121,7 @@ final class EdiCmdUtils {
                 command.add("--");
                 command.addAll(toolArgs);
             }
-            Process process = new ProcessBuilder(command).inheritIO().start();
+            process = new ProcessBuilder(command).inheritIO().start();
             int exitCode = process.waitFor();
             if (exitCode != 0) {
                 throw LauncherUtils.createLauncherException(
@@ -130,6 +131,10 @@ final class EdiCmdUtils {
             throw LauncherUtils.createLauncherException("failed to run the EDI tool: " + e.getMessage());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            // The child is still running, and the jar it is executing is deleted below.
+            if (process != null) {
+                process.destroy();
+            }
             throw LauncherUtils.createLauncherException("the EDI tool was interrupted: " + e.getMessage());
         } finally {
             if (toolJar != null) {
