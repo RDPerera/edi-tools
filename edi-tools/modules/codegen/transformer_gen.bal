@@ -22,24 +22,26 @@ function generateTransformerCode(string ediName, string mainRecordName, boolean 
     string envelopeTransformer = !hasEnvelope ? "" : string `
 
 # Convert EDI string to the envelope headers of ${mainRecordName}.
+# Narrow the result with ensureType.
 #
 # + ediText - EDI string to be converted
-# + return - ${mainRecordName}Headers record or error
+# + return - ${mainRecordName}Headers record boxed as anydata, or error
 public isolated function transformHeadersFromEdiString(string ediText) returns anydata|error {
     return headersFromEdiString(ediText);
 }
 
 # Convert EDI string to a ${mainRecordName}Interchange record.
+# Narrow the result with ensureType.
 #
 # + ediText - EDI string to be converted
-# + return - ${mainRecordName}Interchange record or error
+# + return - ${mainRecordName}Interchange record boxed as any, or error
 public isolated function transformInterchangeFromEdiString(string ediText) returns any|error {
     return interchangeFromEdiString(ediText);
 }
 
 # Convert a ${mainRecordName}Interchange record to EDI string.
 #
-# + content - ${mainRecordName}Interchange record to be converted
+# + content - ${mainRecordName}Interchange record boxed as any
 # + return - EDI string or error
 public isolated function transformInterchangeToEdiString(any content) returns string|error {
     ${mainRecordName}Interchange msg = check content.ensureType();

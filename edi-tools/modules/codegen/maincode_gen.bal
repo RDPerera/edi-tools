@@ -97,10 +97,11 @@ public isolated function hasEnvelope(EDI_NAME ediName) returns boolean {
 }
 
 # Parse only the envelope header segments of the given EDI string.
+# Narrow the result with ensureType.
 #
 # + ediText - EDI string to be parsed
 # + ediName - EDI type name
-# + return - Envelope headers record, or error
+# + return - Envelope headers record of the EDI type boxed as anydata, or error
 public isolated function headersFromEdiString(string ediText, EDI_NAME ediName) returns anydata|error {
     EdiHeadersDeserialize? headersDeserialize = envelopeHeadersDeserializers[ediName];
     if headersDeserialize is () {
@@ -111,10 +112,11 @@ public isolated function headersFromEdiString(string ediText, EDI_NAME ediName) 
 
 # Parse the full envelope hierarchy of the given EDI string.
 # A malformed transaction body becomes an error in that transaction's body field.
+# Narrow the result with ensureType.
 #
 # + ediText - EDI string to be parsed
 # + ediName - EDI type name
-# + return - Interchange record, or error
+# + return - Interchange record of the EDI type boxed as any, or error
 public isolated function interchangeFromEdiString(string ediText, EDI_NAME ediName) returns any|error {
     EdiInterchangeDeserialize? interchangeDeserialize = envelopeInterchangeDeserializers[ediName];
     if interchangeDeserialize is () {
