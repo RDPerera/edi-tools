@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - [Generate envelope-aware EDI schemas and typed envelope wrappers (BEP-1441)](https://github.com/ballerina-platform/ballerina-spec/issues/1441)
 - [Populate the schema envelope in X12 headers mode so `convertX12Schema -H` output works with envelope-aware APIs (BEP-1441)](https://github.com/ballerina-platform/ballerina-spec/issues/1441)
+- [Expose the envelope-aware functions in the default module of a `libgen` package (BEP-1441)](https://github.com/ballerina-platform/ballerina-spec/issues/1441)
 
 ### Changed
 - [Convert EDIFACT schemas from a locally downloaded UNECE directory passed with `convertEdifactSchema -i`, as `service.unece.org` no longer serves the directories to non-browser clients](https://github.com/ballerina-platform/ballerina-library/issues/8983)
