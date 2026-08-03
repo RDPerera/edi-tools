@@ -47,6 +47,33 @@ type Delimiters record {|
 
 type SegmentDefintions map<SegmentDef>;
 
+// One row of a message segment table, extracted from either the HTML pages or
+// the UNTDID batch files. Keeps the segment group nesting logic independent of
+// the input format.
+type TableRow record {|
+    // Group number when the row opens a segment group, nil for a segment row
+    string? groupNumber = ();
+    // Segment code, nil for a segment group row
+    string? ref = ();
+    // Segment name as it appears in the table
+    string name = "";
+    // Location of the segment page, relative to the directory root (HTML input only)
+    string? href = ();
+    // "M" for mandatory, "C" for conditional
+    string status = "C";
+    // Maximum repeat count declared in the table
+    int maxOccurances = 0;
+    // Trailing group nesting characters, from which the nesting depth is derived
+    string rest = "";
+|};
+
+// Extracts a table row from a regex match of the segment table.
+type TableRowScanner function (regexp:Groups row) returns TableRow|error;
+
+// Resolves the definition of a segment referenced by the segment table.
+// Returns nil when the input has no definition for the segment.
+type SegmentDefResolver function (TableRow row, string code, string tag) returns SegmentDef?|error;
+
 type EnvelopeLevel record {|
     (Segement|SegmentGroup)[] header;
     (Segement|SegmentGroup)[] trailer;
@@ -83,12 +110,19 @@ final regexp:RegExp fieldReg = re `(\d+)\s+<A HREF = "\.\./([^"]+)">([^<]+)</A>\
 final regexp:RegExp componentNameReg = re `<H3>[|*]?\s+(\d+)\s+([^<]+)\s+\[[A-Za-z]+\]?\s*</H3>`;
 final regexp:RegExp componentTypeReg = re `Repr:(.*)`;
 
-public function convertEdifactToEdi(string version, string dir, string? messageType = ()) returns error? {
+public function convertEdifactToEdi(string version, string dir, string? messageType = (),
+        string? inputPath = ()) returns error? {
+    if inputPath is string {
+        return convertLocalEdifactToEdi(version, dir, messageType, inputPath);
+    }
     edifactApi = "trade/untdid/" + version + "/";
     string msgTypesUrl = edifactApi + "trmd/";
     http:Response msgTypesRes = check edifactClient->get(msgTypesUrl + "trmdi1.htm");
-    if msgTypesRes.statusCode != 200 {
+    if msgTypesRes.statusCode == 404 {
         return error("Invalid version " + version + " is given");
+    }
+    if msgTypesRes.statusCode != 200 {
+        return error(directoryUnreachableMessage(version, messageType, msgTypesRes.statusCode));
     }
     string msgTypes = check msgTypesRes.getTextPayload();
 
@@ -115,10 +149,26 @@ public function convertEdifactToEdi(string version, string dir, string? messageT
     }
 }
 
+// Reports that the directory pages cannot be fetched and how to supply them
+// locally instead. `service.unece.org` is behind a bot challenge that requires a
+// browser, so no request the tool can make will get through.
+function directoryUnreachableMessage(string version, string? messageType, int statusCode) returns string {
+    string 'type = messageType ?: "<message type>";
+    string[] lines = [
+        string `The UNECE directory service is not reachable (HTTP ${statusCode}). It now requires a browser, ` +
+            "so the tool cannot download the EDIFACT directory.",
+        string `Download the ${version.toUpperAscii()} release archive from ` +
+            "https://unece.org/trade/uncefact/unedifact/download and convert from it:",
+        string `    bal edi convertEdifactSchema -v ${version} -t ${'type} -i <downloaded archive> -o <output directory>`
+    ];
+    return "\n".'join(...lines);
+}
+
 function genEdiSchema(string url, string code, string dir, SegmentDefintions allSegmentDefinitions) returns error? {
     log:printInfo("Generating EDI schema for " + code);
     http:Response msgTypeRes = check edifactClient->get(url);
-    EDISchema ediSchema = check genMsgTypeEdiSchema(check msgTypeRes.getTextPayload(), allSegmentDefinitions, code);
+    EDISchema ediSchema = check genMsgTypeEdiSchema(check msgTypeRes.getTextPayload(), allSegmentDefinitions, code,
+            segmentGroupOrSegmentReg, scanHtmlTableRow, htmlSegmentDefResolver);
     string dirPath = dir;
     if dir[dir.length() - 1] != "/" {
         dirPath = dir + "/";
@@ -126,7 +176,9 @@ function genEdiSchema(string url, string code, string dir, SegmentDefintions all
     check io:fileWriteJson(dirPath + code + ".json", ediSchema);
 }
 
-function genMsgTypeEdiSchema(string msgType, SegmentDefintions segmentDefinitions, string name) returns EDISchema|error {
+function genMsgTypeEdiSchema(string msgType, SegmentDefintions segmentDefinitions, string name,
+        regexp:RegExp tableRowReg, TableRowScanner scanRow, SegmentDefResolver resolveSegmentDef)
+        returns EDISchema|error {
     EDISchema ediSchema = {
         name,
         // The ballerina/edi runtime (>= 1.6.0) strips and validates a leading
@@ -162,9 +214,13 @@ function genMsgTypeEdiSchema(string msgType, SegmentDefintions segmentDefinition
     }
 
     string segmentTable = segmentTableMatch.substring();
-    regexp:Groups[] segments = segmentGroupOrSegmentReg.findAllGroups(segmentTable);
+    TableRow[] rows = [];
+    foreach regexp:Groups row in tableRowReg.findAllGroups(segmentTable) {
+        rows.push(check scanRow(row));
+    }
 
-    check genSegmentsSchema(segments, segmentDefinitions, ediSchema.segments, ediSchema.segmentDefinitions);
+    check genSegmentsSchema(rows, segmentDefinitions, ediSchema.segments, ediSchema.segmentDefinitions,
+            resolveSegmentDef);
 
     // EDIFACT envelope: interchange = UNB / UNZ, transaction = UNH / UNT.
     // No group level. Lift UNH / UNT out of `segments` and add UNB / UNZ
@@ -243,13 +299,13 @@ function forceMandatory((Segement|SegmentGroup)[] units) returns (Segement|Segme
     return result;
 }
 
-function genSegmentsSchema(regexp:Groups[] segmentsMatch, map<SegmentDef> allSegmentDefinitions, (Segement|SegmentGroup)[] segments, SegmentDefintions segmentDefintions) returns error? {
+function genSegmentsSchema(TableRow[] rows, map<SegmentDef> allSegmentDefinitions, (Segement|SegmentGroup)[] segments, SegmentDefintions segmentDefintions, SegmentDefResolver resolveSegmentDef) returns error? {
     int currentDepth = 0;
     SegmentGroup[] segmentGroupsSeq = [];
     SegmentGroup? currentGroup = ();
-    foreach var segmentMatch in segmentsMatch {
-        if segmentGroupReg.isFullMatch(segmentMatch[0].substring()) {
-            var [segmentGroup, depth] = check genSegmentGroupSchema(segmentMatch, segments);
+    foreach TableRow row in rows {
+        if row.groupNumber !is () {
+            var [segmentGroup, depth] = check genSegmentGroupSchema(row);
             if depth == 0 {
                 segmentGroupsSeq = [segmentGroup];
                 segments.push(segmentGroup);
@@ -275,53 +331,63 @@ function genSegmentsSchema(regexp:Groups[] segmentsMatch, map<SegmentDef> allSeg
         } else {
             if segmentGroupsSeq.length() > 0 {
                 currentGroup = segmentGroupsSeq[segmentGroupsSeq.length() - 1];
-                regexp:Span? rest = segmentMatch[6];
-                if rest !is () && rest.substring().trim() == "" {
+                if row.rest.trim() == "" {
                     currentGroup = ();
                 }
             }
-            check genSementSchema(segmentMatch, allSegmentDefinitions, currentGroup, segments, segmentDefintions);
+            check genSementSchema(row, allSegmentDefinitions, currentGroup, segments, segmentDefintions,
+                    resolveSegmentDef);
         }
     }
 }
 
-function genSegmentGroupSchema(regexp:Groups segmentGroupMatch, (Segement|SegmentGroup)[] segments) returns [SegmentGroup, int]|error {
-    regexp:Span? groupNumber = segmentGroupMatch[1];
-    regexp:Span? status = segmentGroupMatch[2];
-    regexp:Span? occurance = segmentGroupMatch[3];
-    regexp:Span? depthMatch = segmentGroupMatch[4];
+// Reads a segment group opener. Group rows carry the group number in the first
+// match group of either input format.
+function scanGroupRow(regexp:Groups groupMatch) returns TableRow|error {
+    regexp:Span? groupNumber = groupMatch[1];
+    regexp:Span? status = groupMatch[2];
+    regexp:Span? occurance = groupMatch[3];
+    regexp:Span? depthMatch = groupMatch[4];
     if groupNumber is () || status is () || occurance is () || depthMatch is () {
         return error("Invalid segment group found");
     }
-    int depth = getDepth(depthMatch.substring());
-    string groupName = "group_" + groupNumber.substring();
+    return {
+        groupNumber: groupNumber.substring(),
+        status: status.substring(),
+        maxOccurances: check int:fromString(occurance.substring()),
+        rest: depthMatch.substring()
+    };
+}
+
+function genSegmentGroupSchema(TableRow row) returns [SegmentGroup, int]|error {
+    string? groupNumber = row.groupNumber;
+    if groupNumber is () {
+        return error("Invalid segment group found");
+    }
+    int depth = getDepth(row.rest);
+    string groupName = "group_" + groupNumber;
     SegmentGroup group = {
         "tag": groupName,
-        "minOccurances": getMinOccurances(status.substring()),
-        "maxOccurances": check int:fromString(occurance.substring()),
+        "minOccurances": getMinOccurances(row.status),
+        "maxOccurances": row.maxOccurances,
         segments: []
     };
     return [group, depth];
 }
 
-function genSementSchema(regexp:Groups segmentMatch, map<SegmentDef> allSegmentDefinitions, SegmentGroup? currentGroup, (Segement|SegmentGroup)[] segments, SegmentDefintions segmentDefintions) returns error? {
-    regexp:Span? url = segmentMatch[1];
-    regexp:Span? codeMatch = segmentMatch[2];
-    regexp:Span? descriptionMatch = segmentMatch[3];
-    regexp:Span? status = segmentMatch[4];
-    regexp:Span? occurance = segmentMatch[5];
-    regexp:Span? rest = segmentMatch[6];
-    if url is () || codeMatch is () || descriptionMatch is () || status is () || occurance is () || rest is () {
+function genSementSchema(TableRow row, map<SegmentDef> allSegmentDefinitions, SegmentGroup? currentGroup, (Segement|SegmentGroup)[] segments, SegmentDefintions segmentDefintions, SegmentDefResolver resolveSegmentDef) returns error? {
+    string? ref = row.ref;
+    if ref is () {
         return error("Invalid segment found");
     }
 
-    string code = codeMatch.substring();
-    string tag = getTag(descriptionMatch.substring().trim());
+    string code = ref;
+    string tag = getTag(row.name);
     Segement segment = {
         "ref": code,
         tag,
-        "minOccurances": getMinOccurances(status.substring()),
-        "maxOccurances": check int:fromString(occurance.substring())
+        "minOccurances": getMinOccurances(row.status),
+        "maxOccurances": row.maxOccurances
     };
     if currentGroup is () {
         segments.push(segment);
@@ -331,32 +397,83 @@ function genSementSchema(regexp:Groups segmentMatch, map<SegmentDef> allSegmentD
     if !segmentDefintions.hasKey(code) {
         SegmentDef? seg = allSegmentDefinitions[code];
         if seg is () {
-            http:Response segementPage = check edifactClient->get(edifactApi + url.substring());
-            if code == "UNH" {
-                allSegmentDefinitions[code] = UNH;
-                segmentDefintions[code] = UNH;
-            } else if code == "UNT" {
-                allSegmentDefinitions[code] = UNT;
-                segmentDefintions[code] = UNT;
-            } else if code == "UNS" {
-                allSegmentDefinitions[code] = UNS;
-                segmentDefintions[code] = UNS;
-            } else if code == "DTM" {
-                allSegmentDefinitions[code] = DTM;
-                segmentDefintions[code] = DTM;
+            SegmentDef? predefined = predefinedSegmentDef(code);
+            if predefined !is () {
+                allSegmentDefinitions[code] = predefined;
+                segmentDefintions[code] = predefined;
             } else {
-                if segementPage.statusCode == 200 {
-                    SegmentDef currentSegmentDef = check getSegmentDef(check segementPage.getTextPayload(), code, tag);
+                SegmentDef? currentSegmentDef = check resolveSegmentDef(row, code, tag);
+                if currentSegmentDef !is () {
                     allSegmentDefinitions[code] = currentSegmentDef;
                     segmentDefintions[code] = currentSegmentDef;
-                } else if segementPage.statusCode == 404 {
-                    log:printDebug("Segment " + code + " not found");
                 }
             }
         } else {
             segmentDefintions[code] = seg;
         }
     }
+}
+
+// Service segments whose definitions ship with the tool rather than being read
+// from the directory.
+function predefinedSegmentDef(string code) returns SegmentDef? {
+    match code {
+        "UNH" => {
+            return UNH;
+        }
+        "UNT" => {
+            return UNT;
+        }
+        "UNS" => {
+            return UNS;
+        }
+        "DTM" => {
+            return DTM;
+        }
+    }
+    return ();
+}
+
+// Reads one row of an HTML segment table, where the first match group is the
+// link to the segment page.
+function scanHtmlTableRow(regexp:Groups row) returns TableRow|error {
+    if segmentGroupReg.isFullMatch(row[0].substring()) {
+        return scanGroupRow(row);
+    }
+    regexp:Span? href = row[1];
+    regexp:Span? codeMatch = row[2];
+    regexp:Span? descriptionMatch = row[3];
+    regexp:Span? status = row[4];
+    regexp:Span? occurance = row[5];
+    regexp:Span? rest = row[6];
+    if href is () || codeMatch is () || descriptionMatch is () || status is () || occurance is () || rest is () {
+        return error("Invalid segment found");
+    }
+    return {
+        ref: codeMatch.substring(),
+        name: descriptionMatch.substring().trim(),
+        href: href.substring(),
+        status: status.substring(),
+        maxOccurances: check int:fromString(occurance.substring()),
+        rest: rest.substring()
+    };
+}
+
+// Fetches and parses the segment page linked from the segment table.
+function htmlSegmentDefResolver(TableRow row, string code, string tag) returns SegmentDef?|error {
+    string? href = row.href;
+    if href is () {
+        return error("Invalid segment found");
+    }
+    http:Response segementPage = check edifactClient->get(edifactApi + href);
+    if segementPage.statusCode == 200 {
+        return getSegmentDef(check segementPage.getTextPayload(), code, tag);
+    }
+    if segementPage.statusCode == 404 {
+        log:printDebug("Segment " + code + " not found");
+        return ();
+    }
+    return error(string `Failed to fetch the definition of segment ${code} (HTTP ${segementPage.statusCode})`);
 }
 
 function getSegmentDef(string segmentPage, string code, string tag) returns SegmentDef|error {

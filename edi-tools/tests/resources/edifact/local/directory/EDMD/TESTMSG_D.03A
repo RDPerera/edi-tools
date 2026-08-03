@@ -1,0 +1,25 @@
+                              UN/EDIFACT
+
+                      Draft directory for test purposes
+
+       This is not a UNECE publication. It is a hand written sample that
+       follows the layout of the UNTDID batch files, used to test schema
+       generation from a locally supplied directory.
+
+4.3    Message structure
+
+4.3.1  Segment table
+
+Pos    Tag Name                                      S   R
+
+           HEADER SECTION
+
+0010   UNH Message header                            M   1
+0020   BGM Beginning of message                      M   1
+0030   NAD Name and address                          C   9
+
+0040       ----- Segment group 1  ------------------ C   5-----------+
+0050   RFF Reference                                 M   1           |
+0060   TAX Duty/tax/fee details                      C   5-----------+
+
+0070   UNT Message trailer                           M   1

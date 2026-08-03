@@ -31,6 +31,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 @CommandLine.Command(name = "convertEdifactSchema", description = "Converts EDIFACT schema to EDI schema.")
 public class ConvertEdifactCmd implements BLauncherCmd {
@@ -46,6 +51,10 @@ public class ConvertEdifactCmd implements BLauncherCmd {
     @CommandLine.Option(names = { "-o", "--output" }, description = "EDIFACT schema directory path")
     private String dir;
 
+    @CommandLine.Option(names = { "-i", "--input" },
+            description = "UNECE EDIFACT directory archive or extracted directory")
+    private String input;
+
     public ConvertEdifactCmd() {
         this.printStream = System.out;
     }
@@ -60,6 +69,7 @@ public class ConvertEdifactCmd implements BLauncherCmd {
         }
         try {
             printStream.println("Generating EDI schema for EDIFACT schema ...");
+            String inputDir = input == null ? "" : prepareInput(input);
             URL res = ConvertEdifactCmd.class.getClassLoader().getResource("editools.jar");
             Path tempFile = Files.createTempFile(null, ".jar");
             try (InputStream in = res.openStream()) {
@@ -67,7 +77,7 @@ public class ConvertEdifactCmd implements BLauncherCmd {
             }
             ProcessBuilder processBuilder = new ProcessBuilder(
                     "bal", "run", tempFile.toAbsolutePath().toString(), "--", CMD_NAME, version, type == null ? "" : type,
-                    dir);
+                    dir, inputDir);
             processBuilder.inheritIO();
             Process process = processBuilder.start();
             process.waitFor();
@@ -79,6 +89,58 @@ public class ConvertEdifactCmd implements BLauncherCmd {
             printStream.println("Error in generating edi schema for edifact schema. " + e.getMessage());
             e.printStackTrace();
         }
+    }
+
+    /**
+     * Resolves the given input to a directory the conversion can read.
+     * A UNECE release is distributed as an archive of archives: the release
+     * archive holds the EDMD and EDSD archives, which in turn hold the batch
+     * files. Both levels are extracted so users do not have to unpack anything.
+     */
+    private String prepareInput(String path) throws IOException {
+        Path source = Path.of(path);
+        if (!Files.exists(source)) {
+            throw new IOException("EDIFACT directory input '" + path + "' does not exist.");
+        }
+        if (Files.isDirectory(source)) {
+            return source.toAbsolutePath().toString();
+        }
+        Path target = Files.createTempDirectory("edifact-directory");
+        extractArchive(source, target);
+        return target.toAbsolutePath().toString();
+    }
+
+    private void extractArchive(Path archive, Path target) throws IOException {
+        List<Path> nestedArchives = new ArrayList<>();
+        try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(archive))) {
+            ZipEntry entry;
+            while ((entry = zip.getNextEntry()) != null) {
+                if (entry.isDirectory()) {
+                    continue;
+                }
+                Path extracted = resolveWithinTarget(target, entry.getName());
+                Files.createDirectories(extracted.getParent());
+                Files.copy(zip, extracted, StandardCopyOption.REPLACE_EXISTING);
+                if (extracted.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".zip")) {
+                    nestedArchives.add(extracted);
+                }
+            }
+        }
+        for (Path nested : nestedArchives) {
+            String name = nested.getFileName().toString();
+            Path nestedTarget = nested.resolveSibling(name.substring(0, name.length() - ".zip".length()));
+            Files.createDirectories(nestedTarget);
+            extractArchive(nested, nestedTarget);
+        }
+    }
+
+    // Rejects archive entries that would be written outside the target directory.
+    private Path resolveWithinTarget(Path target, String entryName) throws IOException {
+        Path resolved = target.resolve(entryName).normalize();
+        if (!resolved.startsWith(target)) {
+            throw new IOException("Archive entry '" + entryName + "' resolves outside the extraction directory.");
+        }
+        return resolved;
     }
 
     @Override

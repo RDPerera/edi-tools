@@ -5,19 +5,29 @@ SYNOPSIS
        bal edi convertEdifactSchema [OPTIONS]
 
 DESCRIPTION
-       The 'bal edi convertEdifactSchema' command is used to convert 
+       The 'bal edi convertEdifactSchema' command is used to convert
        EDIFACT schema to Ballerina EDI schema.
+
+       The UNECE site serving the EDIFACT directories requires a browser, so the
+       directory has to be downloaded and passed in with the '-i' option.
+       Download the release archive for the required version from
+       https://unece.org/trade/uncefact/unedifact/download.
 
 OPTIONS
        -v, --version <EDIFACT version>
            EDIFACT version for EDIFACT schema conversion.
 
        -t, --type <EDIFACT message type>
-           EDIFACT message type for EDIFACT schema conversion.
+           EDIFACT message type for EDIFACT schema conversion. All message types
+           in the directory are converted when this is not given.
+
+       -i, --input <EDIFACT directory path>
+           Path to the downloaded UNECE directory archive or to a directory it
+           was extracted to.
 
        -o, --output <output folder>
            Path to the folder where EDIFACT schemas will be generated.
 
 EXAMPLE
        Convert EDIFACT schema to Ballerina EDI schema.
-           $ bal edi convertEdifactSchema -v d03a -t ORDERS -o output/schema.json
+           $ bal edi convertEdifactSchema -v d03a -t ORDERS -i d03a.zip -o output/
