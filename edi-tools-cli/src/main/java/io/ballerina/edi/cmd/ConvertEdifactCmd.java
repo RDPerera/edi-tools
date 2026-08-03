@@ -32,8 +32,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -67,16 +69,34 @@ public class ConvertEdifactCmd implements BLauncherCmd {
             printStream.println(stringBuilder.toString());
             return;
         }
+        Path toolJar = null;
+        Path extractedInput = null;
         try {
             printStream.println("Generating EDI schema for EDIFACT schema ...");
-            String inputDir = input == null ? "" : prepareInput(input);
+            // A blank --input is treated as not supplied, so the conversion reports
+            // where to download the directory instead of scanning the current directory.
+            String inputPath = input == null ? "" : input.trim();
+            String inputDir = "";
+            if (!inputPath.isEmpty()) {
+                Path source = Path.of(inputPath);
+                if (!Files.exists(source)) {
+                    throw new IOException("EDIFACT directory input '" + inputPath + "' does not exist.");
+                }
+                if (Files.isDirectory(source)) {
+                    inputDir = source.toAbsolutePath().toString();
+                } else {
+                    extractedInput = Files.createTempDirectory("edifact-directory");
+                    extractArchive(source, extractedInput);
+                    inputDir = extractedInput.toString();
+                }
+            }
             URL res = ConvertEdifactCmd.class.getClassLoader().getResource("editools.jar");
-            Path tempFile = Files.createTempFile(null, ".jar");
+            toolJar = Files.createTempFile(null, ".jar");
             try (InputStream in = res.openStream()) {
-                Files.copy(in, tempFile, StandardCopyOption.REPLACE_EXISTING);
+                Files.copy(in, toolJar, StandardCopyOption.REPLACE_EXISTING);
             }
             ProcessBuilder processBuilder = new ProcessBuilder(
-                    "bal", "run", tempFile.toAbsolutePath().toString(), "--", CMD_NAME, version, type == null ? "" : type,
+                    "bal", "run", toolJar.toAbsolutePath().toString(), "--", CMD_NAME, version, type == null ? "" : type,
                     dir, inputDir);
             processBuilder.inheritIO();
             Process process = processBuilder.start();
@@ -88,28 +108,41 @@ public class ConvertEdifactCmd implements BLauncherCmd {
         } catch (Exception e) {
             printStream.println("Error in generating edi schema for edifact schema. " + e.getMessage());
             e.printStackTrace();
+        } finally {
+            delete(toolJar);
+            deleteRecursively(extractedInput);
+        }
+    }
+
+    private void delete(Path file) {
+        if (file == null) {
+            return;
+        }
+        try {
+            Files.deleteIfExists(file);
+        } catch (IOException e) {
+            printStream.println("Warning: could not delete " + file + ". " + e.getMessage());
+        }
+    }
+
+    private void deleteRecursively(Path directory) {
+        if (directory == null) {
+            return;
+        }
+        try (Stream<Path> paths = Files.walk(directory)) {
+            for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(path);
+            }
+        } catch (IOException e) {
+            printStream.println("Warning: could not delete " + directory + ". " + e.getMessage());
         }
     }
 
     /**
-     * Resolves the given input to a directory the conversion can read.
-     * A UNECE release is distributed as an archive of archives: the release
-     * archive holds the EDMD and EDSD archives, which in turn hold the batch
-     * files. Both levels are extracted so users do not have to unpack anything.
+     * Extracts the given archive into the target directory. A UNECE release is an archive of archives:
+     * the release archive holds the EDMD and EDSD archives, which in turn hold the batch files, so
+     * nested archives are extracted as well and users do not have to unpack anything.
      */
-    private String prepareInput(String path) throws IOException {
-        Path source = Path.of(path);
-        if (!Files.exists(source)) {
-            throw new IOException("EDIFACT directory input '" + path + "' does not exist.");
-        }
-        if (Files.isDirectory(source)) {
-            return source.toAbsolutePath().toString();
-        }
-        Path target = Files.createTempDirectory("edifact-directory");
-        extractArchive(source, target);
-        return target.toAbsolutePath().toString();
-    }
-
     private void extractArchive(Path archive, Path target) throws IOException {
         List<Path> nestedArchives = new ArrayList<>();
         try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(archive))) {
