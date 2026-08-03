@@ -30,7 +30,7 @@ public isolated function getEDINames() returns string[] {
 }
 
 # Convert EDI string to Ballerina record.
-# 
+#
 # + ediText - EDI string to be converted
 # + ediName - EDI type name
 # + return - Ballerina record or error
@@ -43,7 +43,7 @@ public isolated function fromEdiString(string ediText, EDI_NAME ediName) returns
 }
 
 # Convert Ballerina record to EDI string.
-# 
+#
 # + data - Ballerina record to be converted
 # + ediName - EDI type name
 # + return - EDI string or error
@@ -54,7 +54,7 @@ public isolated function toEdiString(anydata data, EDI_NAME ediName) returns str
     }
     return ediSerialize(data);
 }
-
+${generateEnvelopeMainCode(libdata)}
 final readonly & map<EdiDeserialize> ediDeserializers = {
     ${libdata.ediDeserializers}
 };
@@ -64,4 +64,88 @@ final readonly & map<EdiSerialize> ediSerializers = {
 };
     `;
 
+}
+
+# Renders the envelope-aware half of the default module: name-dispatched
+# counterparts of the `headersFromEdiString` / `interchangeFromEdiString` /
+# `interchangeToEdiString` functions that `generateCodeForSchema` emits into each
+# EDI module. Only the EDI types whose schema declares an envelope are
+# registered, so a library mixing enveloped and plain schemas gets a dispatcher
+# that errors for the plain ones rather than a module that does not compile.
+#
+# The interchange functions are typed `any` rather than `anydata` because
+# `<Name>Transaction.body` is `<Name>|error` (fail-safe parsing) and a value
+# holding an error is not `anydata`.
+#
+# + libdata - Library data holding the per-EDI-type envelope dispatch entries
+# + return - Ballerina code for the envelope functions, or "" if no schema has an envelope
+function generateEnvelopeMainCode(LibData libdata) returns string {
+    if !libdata.hasEnvelope {
+        return "";
+    }
+    return string `
+type EdiHeadersDeserialize isolated function (string) returns anydata|error;
+type EdiInterchangeDeserialize isolated function (string) returns any|error;
+type EdiInterchangeSerialize isolated function (any) returns string|error;
+
+# Check whether the given EDI type defines an envelope.
+#
+# + ediName - EDI type name
+# + return - true if the EDI type supports the envelope functions
+public isolated function hasEnvelope(EDI_NAME ediName) returns boolean {
+    return envelopeHeadersDeserializers.hasKey(ediName);
+}
+
+# Parse only the envelope header segments of the given EDI string.
+#
+# + ediText - EDI string to be parsed
+# + ediName - EDI type name
+# + return - Envelope headers record, or error
+public isolated function headersFromEdiString(string ediText, EDI_NAME ediName) returns anydata|error {
+    EdiHeadersDeserialize? headersDeserialize = envelopeHeadersDeserializers[ediName];
+    if headersDeserialize is () {
+        return error("EDI type does not define an envelope: " + ediName);
+    }
+    return headersDeserialize(ediText);
+}
+
+# Parse the full envelope hierarchy of the given EDI string.
+# A malformed transaction body becomes an error in that transaction's body field.
+#
+# + ediText - EDI string to be parsed
+# + ediName - EDI type name
+# + return - Interchange record, or error
+public isolated function interchangeFromEdiString(string ediText, EDI_NAME ediName) returns any|error {
+    EdiInterchangeDeserialize? interchangeDeserialize = envelopeInterchangeDeserializers[ediName];
+    if interchangeDeserialize is () {
+        return error("EDI type does not define an envelope: " + ediName);
+    }
+    return interchangeDeserialize(ediText);
+}
+
+# Serialize an interchange record into EDI text.
+#
+# + msg - Interchange record to be converted
+# + ediName - EDI type name
+# + return - EDI string or error
+public isolated function interchangeToEdiString(any msg, EDI_NAME ediName) returns string|error {
+    EdiInterchangeSerialize? interchangeSerialize = envelopeInterchangeSerializers[ediName];
+    if interchangeSerialize is () {
+        return error("EDI type does not define an envelope: " + ediName);
+    }
+    return interchangeSerialize(msg);
+}
+
+final readonly & map<EdiHeadersDeserialize> envelopeHeadersDeserializers = {
+    ${libdata.envelopeHeadersDeserializers}
+};
+
+final readonly & map<EdiInterchangeDeserialize> envelopeInterchangeDeserializers = {
+    ${libdata.envelopeInterchangeDeserializers}
+};
+
+final readonly & map<EdiInterchangeSerialize> envelopeInterchangeSerializers = {
+    ${libdata.envelopeInterchangeSerializers}
+};
+`;
 }

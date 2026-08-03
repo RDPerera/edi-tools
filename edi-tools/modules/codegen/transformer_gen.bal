@@ -14,7 +14,39 @@
 // specific language governing permissions and limitations
 // under the License.
 
-function generateTransformerCode(string ediName, string mainRecordName) returns string {
+function generateTransformerCode(string ediName, string mainRecordName, boolean hasEnvelope) returns string {
+    // Envelope-aware entry points for the name-dispatched facade in the default
+    // module. The interchange ones are typed `any` rather than `anydata` because
+    // `<Name>Transaction.body` is `<Name>|error` (fail-safe parsing) and a value
+    // holding an error is not `anydata`.
+    string envelopeTransformer = !hasEnvelope ? "" : string `
+
+# Convert EDI string to the envelope headers of ${mainRecordName}.
+#
+# + ediText - EDI string to be converted
+# + return - ${mainRecordName}Headers record or error
+public isolated function transformHeadersFromEdiString(string ediText) returns anydata|error {
+    return headersFromEdiString(ediText);
+}
+
+# Convert EDI string to a ${mainRecordName}Interchange record.
+#
+# + ediText - EDI string to be converted
+# + return - ${mainRecordName}Interchange record or error
+public isolated function transformInterchangeFromEdiString(string ediText) returns any|error {
+    return interchangeFromEdiString(ediText);
+}
+
+# Convert a ${mainRecordName}Interchange record to EDI string.
+#
+# + content - ${mainRecordName}Interchange record to be converted
+# + return - EDI string or error
+public isolated function transformInterchangeToEdiString(any content) returns string|error {
+    ${mainRecordName}Interchange msg = check content.ensureType();
+    return interchangeToEdiString(msg);
+}
+`;
+
     string transformer = string `
 type InternalType ${mainRecordName};
 
@@ -39,6 +71,6 @@ public isolated function transformToEdiString(anydata content) returns string|er
 }
 
 isolated function transformWrite(InternalType data) returns ${mainRecordName} => data;
-    `;
+${envelopeTransformer}    `;
     return transformer;
 }

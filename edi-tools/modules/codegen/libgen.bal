@@ -33,6 +33,9 @@ public type LibData record {|
     string ediSerializers = "";
     string[] ediNames = [];
     boolean hasEnvelope = false;
+    string envelopeHeadersDeserializers = "";
+    string envelopeInterchangeDeserializers = "";
+    string envelopeInterchangeSerializers = "";
 |};
 
 # Generates a Ballerina library project containing:
@@ -121,7 +124,8 @@ function generateEDIFileSpecificCode(string ediName, string ediVersion, json map
     libdata.ediNames.push(completeEdiName);
     edi:EdiSchema ediMapping = check edi:getSchema(mappingJson);
     ediMapping.name = "EDI_" + completeEdiName + "_" + ediMapping.name;
-    if ediMapping.envelope is edi:EdiEnvelopeSchema {
+    boolean schemaHasEnvelope = ediMapping.envelope is edi:EdiEnvelopeSchema;
+    if schemaHasEnvelope {
         libdata.hasEnvelope = true;
     }
 
@@ -131,7 +135,7 @@ function generateEDIFileSpecificCode(string ediName, string ediVersion, json map
     string recordsPath = check file:joinPath(modulePath, "G_" + ediName + ".bal");
     check generateCodeForSchema(ediMapping, recordsPath);
 
-    string transformer = generateTransformerCode(ediName, ediMapping.name);
+    string transformer = generateTransformerCode(ediName, ediMapping.name, schemaHasEnvelope);
     check io:fileWriteString(check file:joinPath(modulePath, "transformer.bal"), transformer);
 
     libdata.importsBlock += "\n" + string `import ${libdata.libName}.${moduleName};`;
@@ -141,6 +145,17 @@ function generateEDIFileSpecificCode(string ediName, string ediVersion, json map
         string `    "${completeEdiName}": ${moduleName}:transformFromEdiString`;
     libdata.ediSerializers += (libdata.ediSerializers.length() > 0 ? ",\n" : "") +
         string `    "${completeEdiName}": ${moduleName}:transformToEdiString`;
+
+    // Only enveloped schemas are registered in the envelope dispatch maps — a
+    // plain schema's module has no envelope functions to point at.
+    if schemaHasEnvelope {
+        libdata.envelopeHeadersDeserializers += (libdata.envelopeHeadersDeserializers.length() > 0 ? ",\n" : "") +
+            string `    "${completeEdiName}": ${moduleName}:transformHeadersFromEdiString`;
+        libdata.envelopeInterchangeDeserializers += (libdata.envelopeInterchangeDeserializers.length() > 0 ? ",\n" : "") +
+            string `    "${completeEdiName}": ${moduleName}:transformInterchangeFromEdiString`;
+        libdata.envelopeInterchangeSerializers += (libdata.envelopeInterchangeSerializers.length() > 0 ? ",\n" : "") +
+            string `    "${completeEdiName}": ${moduleName}:transformInterchangeToEdiString`;
+    }
 }
 
 function writeLibFile(string content, string targetName, LibData libdata) returns error? {

@@ -171,6 +171,27 @@ public function main() returns error? {
 }
 ```
 
+The package's default module additionally offers a name-dispatched facade over every schema in the package — `fromEdiString(ediText, ediName)` and `toEdiString(data, ediName)` — which is useful when the EDI type is only known at runtime. When at least one schema declares an envelope, the facade also covers the envelope functions:
+
+```ballerina
+import ballerina/io;
+import citymart/porder;
+import citymart/porder.m850;
+
+public function main() returns error? {
+    string orderText = check io:fileReadString("orders/order10.edi");
+
+    // Route on the envelope headers without parsing the transaction bodies.
+    anydata headers = check porder:headersFromEdiString(orderText, porder:EDI_850);
+
+    any interchange = check porder:interchangeFromEdiString(orderText, porder:EDI_850);
+    m850:Purchase_OrderInterchange typed = check interchange.ensureType();
+    io:println(typed.groups.length());
+}
+```
+
+Because the facade is keyed by name, it hands back the module's typed record boxed in `anydata` (headers) or `any` (interchanges); narrow it with `ensureType` as above. Interchanges are `any` rather than `anydata` because `<Name>Transaction.body` is `<Name>|error`, and a value holding an error is not `anydata`. Call `hasEnvelope(ediName)` to test whether a given EDI type supports these functions — for a schema without an envelope they return an error.
+
 Because trading partners often use variations of a standard format, a partner-specific package can be generated from partner-specific schemas.
 
 ### Running a generated package as a REST service
