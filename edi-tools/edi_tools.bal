@@ -94,6 +94,10 @@ OPTIONS
            -t, --type <EDIFACT message type>
                EDIFACT message type for EDIFACT schema conversion.
 
+           -i, --input <EDIFACT directory path>
+               Path to the downloaded UNECE EDIFACT directory archive or to a
+               directory it was extracted to.
+
            -o, --output <output folder>
                Path to the folder where EDIFACT schemas will be generated.
 
@@ -118,7 +122,7 @@ EXAMPLES
            $ bal edi convertX12Schema -i input/schema.xsd -o output/schema.json
 
        Convert EDIFACT schema to Ballerina EDI schema.
-           $ bal edi convertEdifactSchema -v d03a -t ORDERS -o output/schema.json
+           $ bal edi convertEdifactSchema -v d03a -t ORDERS -i d03a.zip -o output/
 
        Convert ESL schema to Ballerina EDI schema.
            $ bal edi convertESL -b segment_definitions.yaml -i esl_schema.esl -o output/schema.json
@@ -229,7 +233,10 @@ EXAMPLES
             string version = args[1].trim(); // ex: d10a
             string 'type = args[2].trim(); // ex: INVOIC
             string outputPath = args[3].trim();
-            check edifact:convertEdifactToEdi(version, outputPath, 'type == "" ? () : 'type);
+            // Path to a locally downloaded UNECE directory, empty when not given.
+            string inputPath = args.length() > 4 ? args[4].trim() : "";
+            check edifact:convertEdifactToEdi(version, outputPath, 'type == "" ? () : 'type,
+                    inputPath == "" ? () : inputPath);
         } on fail error e {
             log:printError("Error converting EDIFACT schema: " + e.message());
         }

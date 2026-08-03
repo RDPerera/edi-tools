@@ -33,11 +33,13 @@ bal tool pull edi
 
 EDIFACT is the international EDI standard. The tool includes the EDIFACT message specifications, so the schema is generated from the version and message type — no schema needs to be written by hand.
 
-**Step 1 — Convert the spec into a Ballerina EDI schema.** Use `-v` for the EDIFACT version (e.g. `d03a`) and `-t` for the message type (e.g. `ORDERS`, `INVOIC`). `-o` is an output directory; the schema is written there as `<message-type>.json` (here, `resources/ORDERS.json`):
+**Step 1 — Convert the spec into a Ballerina EDI schema.** Download the release archive for the required version from the [UN/EDIFACT directory downloads](https://unece.org/trade/uncefact/unedifact/download) and pass it with `-i`. Use `-v` for the EDIFACT version (e.g. `d03a`) and `-t` for the message type (e.g. `ORDERS`, `INVOIC`); omit `-t` to convert every message type in the directory. `-o` is an output directory; the schema is written there as `<message-type>.json` (here, `resources/ORDERS.json`):
 
 ```
-bal edi convertEdifactSchema -v d03a -t ORDERS -o resources
+bal edi convertEdifactSchema -v d03a -t ORDERS -i d03a.zip -o resources
 ```
+
+`-i` accepts the downloaded archive directly, or a directory it was extracted to.
 
 **Step 2 — Generate Ballerina records and parser functions:**
 
