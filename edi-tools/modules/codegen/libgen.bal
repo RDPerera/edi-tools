@@ -47,10 +47,24 @@ public type LibData record {|
 # + return - Returns error if library generation is not successful
 public function generateLibrary(LibData libdata) returns error? {
     check createLibStructure(libdata);
+    error? generationResult = generatePackageContent(libdata);
+    if generationResult is error {
+        // Nothing usable was produced, so the half-written package is removed rather than
+        // left behind without a Ballerina.toml.
+        removePartialLibrary(libdata);
+        return generationResult;
+    }
+}
+
+function generatePackageContent(LibData libdata) returns error? {
     if libdata.versioned {
         check generateCodeFromFolders(libdata);
     } else {
         check generateCodeFromSchemas(libdata, "", ());
+    }
+    if libdata.ediNames.length() == 0 {
+        return error(string `No EDI schemas were found in ${libdata.schemaPath}. ` +
+                string `Provide a folder containing EDI schema files with the '.json' extension.`);
     }
     check createBalLib(libdata);
     if libdata.hasEnvelope {
@@ -60,6 +74,21 @@ public function generateLibrary(LibData libdata) returns error? {
                 "reject the new `envelope` field with `field cannot be added to " +
                 "the closed record 'edi:EdiSchema'`. The generated Ballerina.toml " +
                 "pins `ballerina/edi` >= " + EDI_RUNTIME_VERSION + " accordingly.");
+    }
+}
+
+# Removes the package directory created for this run. Only the generated package directory is
+# removed, never the output directory it sits in, which may hold unrelated content.
+#
+# + libdata - Data structure holding the generated library path
+function removePartialLibrary(LibData libdata) {
+    if libdata.libPath == "" {
+        return;
+    }
+    file:Error? removed = file:remove(libdata.libPath, file:RECURSIVE);
+    if removed is file:Error {
+        io:fprintln(io:stderr, string `WARNING: could not remove the incomplete package at ` +
+                string `${libdata.libPath}: ${removed.message()}`);
     }
 }
 
@@ -82,23 +111,48 @@ function generateCodeFromFolders(LibData libdata) returns error? {
     foreach file:MetaData schemaFolder in schemaFolders {
         string schemaFolderName = check file:basename(schemaFolder.absPath);
         if !schemaFolder.dir {
-            return error(string `Schema path must only contain folders. Path: ${libdata.schemaPath}. Item: ${schemaFolderName}`);
+            printSkipped(schemaFolderName, "a version folder was expected");
+            continue;
         }
         file:MetaData[] schemaFiles = check file:readDir(schemaFolder.absPath);
         check generateCodeFromSchemas(libdata, schemaFolderName, schemaFiles);
-    }    
+    }
 }
 
 function generateCodeFromSchemas(LibData libdata, string ediVersion, file:MetaData[]? schemaItems) returns error? {
     file:MetaData[] schemaFiles = schemaItems != () ? schemaItems : check file:readDir(libdata.schemaPath);
     foreach file:MetaData schemaFile in schemaFiles {
-        string ediName = check file:basename(schemaFile.absPath);
-        if ediName.endsWith(".json") {
-            ediName = ediName.substring(0, ediName.length() - ".json".length());
+        string fileName = check file:basename(schemaFile.absPath);
+        // Only '.json' files are treated as schemas. Anything else in the folder is reported and
+        // skipped, so unrelated files do not fail the whole run. A '.json' file that cannot be
+        // read is an intended schema, and does fail the run.
+        if schemaFile.dir {
+            printSkipped(fileName, "it is a directory");
+            continue;
         }
-        json schemaJson = check io:fileReadJson(schemaFile.absPath);
-        check generateEDIFileSpecificCode(ediName, ediVersion, schemaJson, libdata);
+        if !fileName.toLowerAscii().endsWith(".json") {
+            printSkipped(fileName, "it is not a '.json' file");
+            continue;
+        }
+        string ediName = fileName.substring(0, fileName.length() - ".json".length());
+        json|error schemaJson = io:fileReadJson(schemaFile.absPath);
+        if schemaJson is error {
+            return error(string `Error reading EDI schema '${fileName}': ${schemaJson.message()}`, schemaJson);
+        }
+        error? generated = generateEDIFileSpecificCode(ediName, ediVersion, schemaJson, libdata);
+        if generated is error {
+            return error(string `Error generating code for EDI schema '${fileName}': ${generated.message()}`,
+                    generated);
+        }
     }
+}
+
+# Reports a folder entry that is not treated as an EDI schema.
+#
+# + name - Name of the skipped entry
+# + reason - Why the entry was skipped
+function printSkipped(string name, string reason) {
+    io:fprintln(io:stderr, string `WARNING: skipping '${name}' because ${reason}.`);
 }
 
 function createBalLib(LibData libdata) returns error? {

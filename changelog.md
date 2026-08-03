@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - [Retain segment fields whose names wrap across two lines in the EDIFACT specification, which were previously dropped from the generated segment definitions](https://github.com/ballerina-platform/ballerina-library/issues/8983)
 - [Surface command failures instead of exiting with a success status: print usage for `--help` and for missing options, propagate the EDI tool exit code, and stop discarding the tool's error output](https://github.com/ballerina-platform/ballerina-library/issues/8982)
+- [Skip non-`.json` entries in a `libgen` schema folder with a warning instead of failing on them, and remove the generated package when no schemas could be generated so an unbuildable one is never left behind](https://github.com/ballerina-platform/ballerina-library/issues/8982)
 
 ## [2.0.0] - 2024-05-29
 
