@@ -18,6 +18,7 @@
 
 package io.ballerina.edi.cmd;
 
+import io.ballerina.cli.launcher.BLauncherException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
@@ -27,6 +28,7 @@ import java.nio.file.Path;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -60,7 +62,11 @@ class LibgenCmdTest {
         LibgenCmd cmd = new LibgenCmd();
         new CommandLine(cmd).parseArgs(
                 "-p", "invalid package!", "-i", tempDir.toString(), "-o", tempDir.toString());
-        cmd.execute();
+
+        BLauncherException e = assertThrows(BLauncherException.class, cmd::execute,
+                "An invalid package name should fail the command");
+        assertTrue(String.join("\n", e.getMessages()).contains("invalid package name"),
+                "Unexpected failure message: " + e.getMessages());
 
         try (Stream<Path> outputs = Files.list(tempDir)) {
             assertEquals(0, outputs.count(), "Nothing should be generated for an invalid package name");

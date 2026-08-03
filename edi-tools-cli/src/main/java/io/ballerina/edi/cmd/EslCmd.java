@@ -21,30 +21,23 @@ package io.ballerina.edi.cmd;
 import io.ballerina.cli.BLauncherCmd;
 import picocli.CommandLine;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.PrintStream;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
+import java.util.List;
 
 @CommandLine.Command(name = "convertESL", description = "Converts ESL schemas to Ballerina compatible JSON schemas.")
 public class EslCmd implements BLauncherCmd {
     private static final String CMD_NAME = "convertESL";
-    private static final String EDI_TOOL = "editools.jar";
+    private static final String HELP_FILE = "convertESL.help";
 
     private PrintStream printStream;
 
-    @CommandLine.Option(names = { "-b", "--basedef" }, description = "Segment definitions path")
+    @CommandLine.Option(names = { "-b", "--basedef" }, required = true, description = "Segment definitions path")
     private String basedefPath;
 
-    @CommandLine.Option(names = { "-i", "--input" }, description = "Input ESL schema path")
+    @CommandLine.Option(names = { "-i", "--input" }, required = true, description = "Input ESL schema path")
     private String schemaPath;
 
-    @CommandLine.Option(names = { "-o", "--output" }, description = "Output path")
+    @CommandLine.Option(names = { "-o", "--output" }, required = true, description = "Output path")
     private String outputPath;
 
     public EslCmd() {
@@ -54,32 +47,10 @@ public class EslCmd implements BLauncherCmd {
     @Override
     public void execute() {
         if (basedefPath == null || schemaPath == null || outputPath == null) {
-            StringBuilder stringBuilder = new StringBuilder();
-            printUsage(stringBuilder);
-            printStream.println(stringBuilder.toString());
-            return;
+            throw EdiCmdUtils.missingOptions(CMD_NAME, HELP_FILE);
         }
-        try {
-            printStream.println("Converting ESL schemas in " + schemaPath);
-            Class<?> clazz = LibgenCmd.class;
-            ClassLoader classLoader = clazz.getClassLoader();
-            Path tempFile = Files.createTempFile(null, ".jar");
-            try (InputStream in = classLoader.getResourceAsStream(EDI_TOOL)) {
-                Files.copy(in, tempFile, StandardCopyOption.REPLACE_EXISTING);
-            }
-            ProcessBuilder processBuilder = new ProcessBuilder(
-                    "bal", "run", tempFile.toAbsolutePath().toString(), "--", "convertESL", schemaPath, basedefPath,
-                    outputPath);
-            Process process = processBuilder.start();
-            process.waitFor();
-            java.io.InputStream is = process.getInputStream();
-            byte b[] = new byte[is.available()];
-            is.read(b, 0, b.length);
-            printStream.println(new String(b));
-        } catch (Exception e) {
-            printStream.println("Error in generating library. " + e.getMessage());
-            e.printStackTrace();
-        }
+        printStream.println("Converting ESL schemas in " + schemaPath);
+        EdiCmdUtils.runEdiTool(List.of(CMD_NAME, schemaPath, basedefPath, outputPath));
     }
 
     @Override
@@ -89,25 +60,12 @@ public class EslCmd implements BLauncherCmd {
 
     @Override
     public void printLongDesc(StringBuilder stringBuilder) {
-        Class<?> clazz = EdiCmd.class;
-        ClassLoader classLoader = clazz.getClassLoader();
-        InputStream inputStream = classLoader.getResourceAsStream("cli-docs/convertESL.help");
-        if (inputStream != null) {
-            try (InputStreamReader inputStreamREader = new InputStreamReader(inputStream, StandardCharsets.UTF_8);
-                    BufferedReader br = new BufferedReader(inputStreamREader)) {
-                String content = br.readLine();
-                printStream.append(content);
-                while ((content = br.readLine()) != null) {
-                    printStream.append('\n').append(content);
-                }
-            } catch (IOException e) {
-                printStream.println("Helper text is not available.");
-            }
-        }
+        EdiCmdUtils.appendHelp(stringBuilder, HELP_FILE);
     }
 
     @Override
     public void printUsage(StringBuilder stringBuilder) {
+        EdiCmdUtils.appendHelp(stringBuilder, HELP_FILE);
     }
 
     @Override

@@ -19,32 +19,27 @@
 package io.ballerina.edi.cmd;
 
 import io.ballerina.cli.BLauncherCmd;
+import io.ballerina.cli.launcher.LauncherUtils;
 import picocli.CommandLine;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.PrintStream;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
+import java.util.List;
 
 @CommandLine.Command(name = "libgen", description = "Generates Ballerina package for code for the given collection of EDI schemas.")
 public class LibgenCmd implements BLauncherCmd {
     private static final String CMD_NAME = "libgen";
-    private static final String EDI_TOOL = "editools.jar";
+    private static final String HELP_FILE = CMD_NAME + ".help";
 
     private PrintStream printStream;
 
-    @CommandLine.Option(names = { "-p", "--package" }, description = "Package name(organization-name/package-name)")
+    @CommandLine.Option(names = { "-p", "--package" }, required = true,
+            description = "Package name(organization-name/package-name)")
     private String packageName;
 
-    @CommandLine.Option(names = { "-i", "--input" }, description = "EDI schemas path")
+    @CommandLine.Option(names = { "-i", "--input" }, required = true, description = "EDI schemas path")
     private String schemaPath;
 
-    @CommandLine.Option(names = { "-o", "--output" }, description = "Output path")
+    @CommandLine.Option(names = { "-o", "--output" }, required = true, description = "Output path")
     private String outputPath;
 
     public LibgenCmd() {
@@ -54,42 +49,18 @@ public class LibgenCmd implements BLauncherCmd {
     @Override
     public void execute() {
         if (packageName == null || schemaPath == null || outputPath == null) {
-            StringBuilder stringBuilder = new StringBuilder();
-            printUsage(stringBuilder);
-            printStream.println(stringBuilder.toString());
-            return;
+            throw EdiCmdUtils.missingOptions(CMD_NAME, HELP_FILE);
         }
         if (!packageName.matches("^[a-zA-Z0-9_]{1,256}/[a-zA-Z0-9_.]{1,256}$")) {
-            printStream.println(
-                    "Invalid package name. Package name should be in the format orgname/packagename."+
-                    " The orgname part must contain only alphanumeric characters or underscores and be 1 to 256 characters long."+
+            throw LauncherUtils.createLauncherException(
+                    "invalid package name. Package name should be in the format orgname/packagename." +
+                    " The orgname part must contain only alphanumeric characters or underscores and be 1 to 256 characters long." +
                     " The packagename part must contain only alphanumeric characters, underscores, or periods and be 1 to 256 characters long.");
-            return;
         }
-        try {
-            printStream.println("Generating library package for " + packageName + " : " + schemaPath);
-            Class<?> clazz = LibgenCmd.class;
-            ClassLoader classLoader = clazz.getClassLoader();
-            Path tempFile = Files.createTempFile(null, ".jar");
-            try (InputStream in = classLoader.getResourceAsStream(EDI_TOOL)) {
-                Files.copy(in, tempFile, StandardCopyOption.REPLACE_EXISTING);
-            }
-            String orgName = packageName.split("/")[0];
-            String libName = packageName.split("/")[1];
-            ProcessBuilder processBuilder = new ProcessBuilder(
-                    "bal", "run", tempFile.toAbsolutePath().toString(), "--", "libgen", orgName, libName, schemaPath,
-                    outputPath);
-            processBuilder.inheritIO();
-            Process process = processBuilder.start();
-            process.waitFor();
-            java.io.InputStream is = process.getInputStream();
-            byte b[] = new byte[is.available()];
-            is.read(b, 0, b.length);
-            printStream.println(new String(b));
-        } catch (Exception e) {
-            printStream.println("Error in generating library. " + e.getMessage());
-            e.printStackTrace();
-        }
+        printStream.println("Generating library package for " + packageName + " : " + schemaPath);
+        String orgName = packageName.split("/")[0];
+        String libName = packageName.split("/")[1];
+        EdiCmdUtils.runEdiTool(List.of(CMD_NAME, orgName, libName, schemaPath, outputPath));
     }
 
     @Override
@@ -99,25 +70,12 @@ public class LibgenCmd implements BLauncherCmd {
 
     @Override
     public void printLongDesc(StringBuilder stringBuilder) {
-        Class<?> clazz = EdiCmd.class;
-        ClassLoader classLoader = clazz.getClassLoader();
-        InputStream inputStream = classLoader.getResourceAsStream("cli-docs/libgen.help");
-        if (inputStream != null) {
-            try (InputStreamReader inputStreamREader = new InputStreamReader(inputStream, StandardCharsets.UTF_8);
-                    BufferedReader br = new BufferedReader(inputStreamREader)) {
-                String content = br.readLine();
-                printStream.append(content);
-                while ((content = br.readLine()) != null) {
-                    printStream.append('\n').append(content);
-                }
-            } catch (IOException e) {
-                printStream.println("Helper text is not available.");
-            }
-        }
+        EdiCmdUtils.appendHelp(stringBuilder, HELP_FILE);
     }
 
     @Override
     public void printUsage(StringBuilder stringBuilder) {
+        EdiCmdUtils.appendHelp(stringBuilder, HELP_FILE);
     }
 
     @Override

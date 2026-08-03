@@ -16,13 +16,12 @@
 
 import ballerina/io;
 import ballerina/file;
-import ballerina/log;
 import editools.codegen;
 import editools.edifact;
 import editools.esl;
 import editools.x12xsd;
 
-public function main(string[] args) {
+public function main(string[] args) returns error? {
 
     string usage = string 
 `NAME
@@ -137,22 +136,21 @@ EXAMPLES
     if mode == "codegen" {
         if args.length() != 3 {
             io:println(usage);
-            return;
+            return error("Invalid number of arguments given for the 'codegen' mode");
         }
         json|error mappingJson = io:fileReadJson(args[1].trim());
         if mappingJson is error {
-            log:printError("Error reading schema json file: " + mappingJson.message());
-            return;
+            return error("Error reading schema json file: " + mappingJson.message(), mappingJson);
         }
         error? e = codegen:generateCodeForSchema(mappingJson, args[2].trim());
         if e is error {
-            log:printError("Error generating code: " + e.message());
+            return error("Error generating code: " + e.message(), e);
         }
 
     } else if mode == "libgen" {
         if !(args.length() == 5 || args.length() == 6) {
             io:println(usage);
-            return;
+            return error("Invalid number of arguments given for the 'libgen' mode");
         }
         codegen:LibData libdata = {
             orgName: args[1],
@@ -163,16 +161,20 @@ EXAMPLES
         };
         error? e = codegen:generateLibrary(libdata);
         if e is error {
-            log:printError("Error generating library: " + e.message());
+            return error("Error generating library: " + e.message(), e);
         }
 
     } else if mode == "convertESL" {
+        if args.length() != 4 {
+            io:println(usage);
+            return error("Invalid number of arguments given for the 'convertESL' mode");
+        }
         string eslPath = args[1].trim();
         string basedefPath = args[2].trim();
         string outputPath = args[3].trim();
         error? e = esl:convertEsl(eslPath, basedefPath, outputPath);
         if e is error {
-            log:printError("Error converting ESL: " + e.message());
+            return error("Error converting ESL: " + e.message(), e);
         }
 
     } else if mode == "convertX12Schema" {
@@ -197,15 +199,13 @@ EXAMPLES
 
             if (collection) {
                 if (!isInputDir || !isOutputDir) {
-                    io:println("In collection mode, both output and input should be a directories");
-                    return;
+                    return error("In collection mode, both output and input should be a directories");
                 }
                 check x12xsd:convertFromX12CollectionAndWrite(inputPath, outputPath, headers, segDetlPath);
             } else {
                 if (headers) {
                     if (!isInputDir) {
-                        io:println("In header mode, input should be a directory containing header and message schema files");
-                        return;
+                        return error("In header mode, input should be a directory containing header and message schema files");
                     }
                     string outputPathGenerated = outputPath;
                     if (isOutputDir) {
@@ -215,20 +215,19 @@ EXAMPLES
                     check x12xsd:convertFromX12WithHeadersAndWrite(inputPath, outputPathGenerated, segDetlPath);
                 } else {
                     if (isInputDir || isOutputDir) {
-                        io:println("Collection mode or header mode not selected, both input and output should be files");
-                        return;
+                        return error("Collection mode or header mode not selected, both input and output should be files");
                     }
                     check x12xsd:convertFromX12XsdAndWrite(inputPath, outputPath, segDetlPath);
                 }
             }
         } on fail error e {
-            log:printError("Error converting X12 schema: " + e.message());
+            return error("Error converting X12 schema: " + e.message(), e);
         }
     } else if mode == "convertEdifactSchema" {
         do {
-            if args.length() < 3 {
+            if args.length() < 4 {
                 io:println(usage);
-                return;
+                return error("Invalid number of arguments given for the 'convertEdifactSchema' mode");
             }
             string version = args[1].trim(); // ex: d10a
             string 'type = args[2].trim(); // ex: INVOIC
@@ -238,9 +237,10 @@ EXAMPLES
             check edifact:convertEdifactToEdi(version, outputPath, 'type == "" ? () : 'type,
                     inputPath == "" ? () : inputPath);
         } on fail error e {
-            log:printError("Error converting EDIFACT schema: " + e.message());
+            return error("Error converting EDIFACT schema: " + e.message(), e);
         }
     } else {
         io:println(usage);
+        return error("Unknown mode: " + mode);
     }
 }

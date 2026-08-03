@@ -19,15 +19,11 @@
 package io.ballerina.edi.cmd;
 
 import io.ballerina.cli.BLauncherCmd;
+import io.ballerina.cli.launcher.LauncherUtils;
 import picocli.CommandLine;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.PrintStream;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -42,15 +38,18 @@ import java.util.zip.ZipInputStream;
 @CommandLine.Command(name = "convertEdifactSchema", description = "Converts EDIFACT schema to EDI schema.")
 public class ConvertEdifactCmd implements BLauncherCmd {
     private static final String CMD_NAME = "convertEdifactSchema";
+    private static final String HELP_FILE = "convertEDIfact.help";
+
     private final PrintStream printStream;
 
-    @CommandLine.Option(names = { "-v", "--version" }, description = "EDIFACT version")
+    @CommandLine.Option(names = { "-v", "--version" }, required = true, description = "EDIFACT version")
     private String version;
 
     @CommandLine.Option(names = { "-t", "--type" }, description = "EDIFACT message type")
     private String type;
 
-    @CommandLine.Option(names = { "-o", "--output" }, description = "EDIFACT schema directory path")
+    @CommandLine.Option(names = { "-o", "--output" }, required = true,
+            description = "EDIFACT schema directory path")
     private String dir;
 
     @CommandLine.Option(names = { "-i", "--input" },
@@ -64,23 +63,20 @@ public class ConvertEdifactCmd implements BLauncherCmd {
     @Override
     public void execute() {
         if (version == null || dir == null) {
-            StringBuilder stringBuilder = new StringBuilder();
-            printUsage(stringBuilder);
-            printStream.println(stringBuilder.toString());
-            return;
+            throw EdiCmdUtils.missingOptions(CMD_NAME, HELP_FILE);
         }
-        Path toolJar = null;
+        printStream.println("Generating EDI schema for EDIFACT schema ...");
+        // A blank --input is treated as not supplied, so the conversion reports
+        // where to download the directory instead of scanning the current directory.
+        String inputPath = input == null ? "" : input.trim();
         Path extractedInput = null;
         try {
-            printStream.println("Generating EDI schema for EDIFACT schema ...");
-            // A blank --input is treated as not supplied, so the conversion reports
-            // where to download the directory instead of scanning the current directory.
-            String inputPath = input == null ? "" : input.trim();
             String inputDir = "";
             if (!inputPath.isEmpty()) {
                 Path source = Path.of(inputPath);
                 if (!Files.exists(source)) {
-                    throw new IOException("EDIFACT directory input '" + inputPath + "' does not exist.");
+                    throw LauncherUtils.createLauncherException(
+                            "EDIFACT directory input '" + inputPath + "' does not exist.");
                 }
                 if (Files.isDirectory(source)) {
                     inputDir = source.toAbsolutePath().toString();
@@ -90,38 +86,12 @@ public class ConvertEdifactCmd implements BLauncherCmd {
                     inputDir = extractedInput.toString();
                 }
             }
-            URL res = ConvertEdifactCmd.class.getClassLoader().getResource("editools.jar");
-            toolJar = Files.createTempFile(null, ".jar");
-            try (InputStream in = res.openStream()) {
-                Files.copy(in, toolJar, StandardCopyOption.REPLACE_EXISTING);
-            }
-            ProcessBuilder processBuilder = new ProcessBuilder(
-                    "bal", "run", toolJar.toAbsolutePath().toString(), "--", CMD_NAME, version, type == null ? "" : type,
-                    dir, inputDir);
-            processBuilder.inheritIO();
-            Process process = processBuilder.start();
-            process.waitFor();
-            java.io.InputStream is = process.getInputStream();
-            byte b[] = new byte[is.available()];
-            is.read(b, 0, b.length);
-            printStream.println(new String(b));
-        } catch (Exception e) {
-            printStream.println("Error in generating edi schema for edifact schema. " + e.getMessage());
-            e.printStackTrace();
-        } finally {
-            delete(toolJar);
-            deleteRecursively(extractedInput);
-        }
-    }
-
-    private void delete(Path file) {
-        if (file == null) {
-            return;
-        }
-        try {
-            Files.deleteIfExists(file);
+            EdiCmdUtils.runEdiTool(List.of(CMD_NAME, version, type == null ? "" : type, dir, inputDir));
         } catch (IOException e) {
-            printStream.println("Warning: could not delete " + file + ". " + e.getMessage());
+            throw LauncherUtils.createLauncherException(
+                    "failed to read the EDIFACT directory input '" + inputPath + "': " + e.getMessage());
+        } finally {
+            deleteRecursively(extractedInput);
         }
     }
 
@@ -183,25 +153,12 @@ public class ConvertEdifactCmd implements BLauncherCmd {
 
     @Override
     public void printLongDesc(StringBuilder stringBuilder) {
-        Class<?> clazz = EdiCmd.class;
-        ClassLoader classLoader = clazz.getClassLoader();
-        InputStream inputStream = classLoader.getResourceAsStream("cli-docs/convertEDIfact.help");
-        if (inputStream != null) {
-            try (InputStreamReader inputStreamREader = new InputStreamReader(inputStream, StandardCharsets.UTF_8);
-                    BufferedReader br = new BufferedReader(inputStreamREader)) {
-                String content = br.readLine();
-                printStream.append(content);
-                while ((content = br.readLine()) != null) {
-                    printStream.append('\n').append(content);
-                }
-            } catch (IOException e) {
-                printStream.println("Helper text is not available.");
-            }
-        }
+        EdiCmdUtils.appendHelp(stringBuilder, HELP_FILE);
     }
 
     @Override
     public void printUsage(StringBuilder stringBuilder) {
+        EdiCmdUtils.appendHelp(stringBuilder, HELP_FILE);
     }
 
     @Override

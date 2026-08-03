@@ -21,11 +21,9 @@ package io.ballerina.edi.cmd;
 import org.junit.jupiter.api.Test;
 import picocli.CommandLine;
 
-import java.io.ByteArrayOutputStream;
-import java.io.PrintStream;
 import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -45,17 +43,7 @@ class EdiCmdTest {
 
     @Test
     void testNoArgumentInvocationRunsEdiTool() {
-        PrintStream originalOut = System.out;
-        ByteArrayOutputStream captured = new ByteArrayOutputStream();
-        System.setOut(new PrintStream(captured));
-        try {
-            // EdiCmd picks up System.out in its constructor; the command swallows failures,
-            // so the error message on the captured stream is the only failure signal
-            new EdiCmd().execute();
-        } finally {
-            System.setOut(originalOut);
-        }
-        assertFalse(captured.toString().contains("Error in executing EDI CLI commands"),
-                "EDI tool invocation failed: " + captured);
+        // A failed tool run now fails the command, so completing without an exception is the assertion
+        assertDoesNotThrow(() -> new EdiCmd().execute());
     }
 }
