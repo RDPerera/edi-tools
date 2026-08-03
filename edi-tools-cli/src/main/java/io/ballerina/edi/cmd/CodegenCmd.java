@@ -31,6 +31,9 @@ public class CodegenCmd implements BLauncherCmd {
 
     private final PrintStream printStream;
 
+    @CommandLine.Option(names = { "-h", "--help" }, hidden = true, usageHelp = true)
+    private boolean helpFlag;
+
     @CommandLine.Option(names = { "-i", "--input" }, required = true, description = "EDI schema file path")
     private String schemaPath;
 
@@ -43,6 +46,10 @@ public class CodegenCmd implements BLauncherCmd {
 
     @Override
     public void execute() {
+        if (helpFlag) {
+            EdiCmdUtils.printHelp(printStream, HELP_FILE);
+            return;
+        }
         if (schemaPath == null || outputPath == null) {
             throw EdiCmdUtils.missingOptions(CMD_NAME, HELP_FILE);
         }

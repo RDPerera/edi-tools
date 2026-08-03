@@ -21,6 +21,7 @@ package io.ballerina.edi.cmd;
 import io.ballerina.cli.BLauncherCmd;
 import picocli.CommandLine;
 
+import java.io.PrintStream;
 import java.util.List;
 
 /**
@@ -37,14 +38,21 @@ public class EdiCmd implements BLauncherCmd {
     private static final String CMD_NAME = "edi";
     private static final String HELP_FILE = "edi.help";
 
-    @CommandLine.Option(names = { "-h", "--help" }, hidden = true)
+    private final PrintStream printStream;
+
+    @CommandLine.Option(names = { "-h", "--help" }, hidden = true, usageHelp = true)
     private boolean helpFlag;
 
     public EdiCmd() {
+        this.printStream = System.out;
     }
 
     @Override
     public void execute() {
+        if (helpFlag) {
+            EdiCmdUtils.printHelp(printStream, HELP_FILE);
+            return;
+        }
         EdiCmdUtils.runEdiTool(List.of());
     }
 

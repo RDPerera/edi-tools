@@ -33,6 +33,9 @@ public class ConvertX12Cmd implements BLauncherCmd {
 
     private final PrintStream printStream;
 
+    @CommandLine.Option(names = { "-h", "--help" }, hidden = true, usageHelp = true)
+    private boolean helpFlag;
+
     @CommandLine.Option(names = { "-H", "--headers" }, description = { "Include headers in the input" })
     private boolean headersIncluded;
 
@@ -54,6 +57,10 @@ public class ConvertX12Cmd implements BLauncherCmd {
 
     @Override
     public void execute() {
+        if (helpFlag) {
+            EdiCmdUtils.printHelp(printStream, HELP_FILE);
+            return;
+        }
         if (inputPath == null || outputPath == null) {
             throw EdiCmdUtils.missingOptions(CMD_NAME, HELP_FILE);
         }

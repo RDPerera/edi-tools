@@ -25,6 +25,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -73,6 +74,18 @@ final class EdiCmdUtils {
         } catch (IOException e) {
             stringBuilder.append(HELP_NOT_AVAILABLE);
         }
+    }
+
+    /**
+     * Prints the help text of a command, used when the command is invoked with {@code --help}.
+     *
+     * @param printStream  stream to print the help text to
+     * @param helpFileName help file name within {@code cli-docs}, e.g. {@code libgen.help}
+     */
+    static void printHelp(PrintStream printStream, String helpFileName) {
+        StringBuilder stringBuilder = new StringBuilder();
+        appendHelp(stringBuilder, helpFileName);
+        printStream.println(stringBuilder);
     }
 
     /**

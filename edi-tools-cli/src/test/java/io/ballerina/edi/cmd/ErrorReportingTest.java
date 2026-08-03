@@ -27,6 +27,9 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import picocli.CommandLine;
 
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -76,6 +79,32 @@ class ErrorReportingTest {
 
         assertFalse(stringBuilder.toString().isBlank(),
                 "printLongDesc appended nothing to the builder for '" + name + "'");
+    }
+
+    /**
+     * {@code --help} must print the help text rather than complaining about the mandatory options
+     * it was asking about. Declaring the options {@code required} without a {@code usageHelp}
+     * option would make picocli reject the invocation before the command runs.
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("commands")
+    void testHelpFlagPrintsHelpInsteadOfRequiringOptions(String name, Supplier<BLauncherCmd> factory) {
+        PrintStream original = System.out;
+        ByteArrayOutputStream captured = new ByteArrayOutputStream();
+        System.setOut(new PrintStream(captured, true, StandardCharsets.UTF_8));
+        try {
+            // The commands capture System.out in their constructors
+            BLauncherCmd cmd = factory.get();
+            CommandLine.ParseResult parsed = new CommandLine(cmd).parseArgs("--help");
+            assertTrue(parsed.isUsageHelpRequested(), "'--help' was not treated as a help request for " + name);
+            cmd.execute();
+        } finally {
+            System.setOut(original);
+        }
+        String help = captured.toString(StandardCharsets.UTF_8);
+        assertTrue(help.contains("bal edi"), "'--help' printed no usage for '" + name + "': " + help);
+        assertFalse(help.contains("Helper text is not available."),
+                "Help resource missing for '" + name + "'");
     }
 
     /**

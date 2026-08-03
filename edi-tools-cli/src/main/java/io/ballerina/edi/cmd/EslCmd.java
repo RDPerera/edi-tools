@@ -31,6 +31,9 @@ public class EslCmd implements BLauncherCmd {
 
     private PrintStream printStream;
 
+    @CommandLine.Option(names = { "-h", "--help" }, hidden = true, usageHelp = true)
+    private boolean helpFlag;
+
     @CommandLine.Option(names = { "-b", "--basedef" }, required = true, description = "Segment definitions path")
     private String basedefPath;
 
@@ -46,6 +49,10 @@ public class EslCmd implements BLauncherCmd {
 
     @Override
     public void execute() {
+        if (helpFlag) {
+            EdiCmdUtils.printHelp(printStream, HELP_FILE);
+            return;
+        }
         if (basedefPath == null || schemaPath == null || outputPath == null) {
             throw EdiCmdUtils.missingOptions(CMD_NAME, HELP_FILE);
         }

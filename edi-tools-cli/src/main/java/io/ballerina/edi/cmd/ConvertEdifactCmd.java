@@ -42,6 +42,9 @@ public class ConvertEdifactCmd implements BLauncherCmd {
 
     private final PrintStream printStream;
 
+    @CommandLine.Option(names = { "-h", "--help" }, hidden = true, usageHelp = true)
+    private boolean helpFlag;
+
     @CommandLine.Option(names = { "-v", "--version" }, required = true, description = "EDIFACT version")
     private String version;
 
@@ -62,6 +65,10 @@ public class ConvertEdifactCmd implements BLauncherCmd {
 
     @Override
     public void execute() {
+        if (helpFlag) {
+            EdiCmdUtils.printHelp(printStream, HELP_FILE);
+            return;
+        }
         if (version == null || dir == null) {
             throw EdiCmdUtils.missingOptions(CMD_NAME, HELP_FILE);
         }
