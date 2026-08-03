@@ -21,15 +21,8 @@ package io.ballerina.edi.cmd;
 import io.ballerina.cli.BLauncherCmd;
 import picocli.CommandLine;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.PrintStream;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
+import java.util.List;
 
 /**
  * Main class to implement "edi" command for ballerina.
@@ -43,37 +36,24 @@ import java.nio.file.StandardCopyOption;
 })
 public class EdiCmd implements BLauncherCmd {
     private static final String CMD_NAME = "edi";
-    private static final String EDI_TOOL = "editools.jar";
-    private PrintStream printStream;
+    private static final String HELP_FILE = "edi.help";
 
-    @CommandLine.Option(names = { "-h", "--help" }, hidden = true)
+    private final PrintStream printStream;
+
+    @CommandLine.Option(names = { "-h", "--help" }, hidden = true, usageHelp = true)
     private boolean helpFlag;
 
     public EdiCmd() {
-        printStream = System.out;
+        this.printStream = System.out;
     }
 
     @Override
     public void execute() {
-        try {
-            Class<?> clazz = EdiCmd.class;
-            ClassLoader classLoader = clazz.getClassLoader();
-            Path tempFile = Files.createTempFile(null, ".jar");
-            try (InputStream in = classLoader.getResourceAsStream(EDI_TOOL)) {
-                Files.copy(in, tempFile, StandardCopyOption.REPLACE_EXISTING);
-            }
-            ProcessBuilder processBuilder = new ProcessBuilder("bal", "run", tempFile.toAbsolutePath().toString());
-            processBuilder.inheritIO();
-            Process process = processBuilder.start();
-            process.waitFor();
-            java.io.InputStream is = process.getInputStream();
-            byte b[] = new byte[is.available()];
-            is.read(b, 0, b.length);
-            printStream.println(new String(b));
-        } catch (Exception e) {
-            printStream.println("Error in executing EDI CLI commands. " + e.getMessage());
-            e.printStackTrace();
+        if (helpFlag) {
+            EdiCmdUtils.printHelp(printStream, HELP_FILE);
+            return;
         }
+        EdiCmdUtils.runEdiTool(List.of());
     }
 
     @Override
@@ -83,25 +63,12 @@ public class EdiCmd implements BLauncherCmd {
 
     @Override
     public void printLongDesc(StringBuilder stringBuilder) {
-        Class<?> clazz = EdiCmd.class;
-        ClassLoader classLoader = clazz.getClassLoader();
-        InputStream inputStream = classLoader.getResourceAsStream("cli-docs/edi.help");
-        if (inputStream != null) {
-            try (InputStreamReader inputStreamREader = new InputStreamReader(inputStream, StandardCharsets.UTF_8);
-                    BufferedReader br = new BufferedReader(inputStreamREader)) {
-                String content = br.readLine();
-                printStream.append(content);
-                while ((content = br.readLine()) != null) {
-                    printStream.append('\n').append(content);
-                }
-            } catch (IOException e) {
-                printStream.println("Helper text is not available.");
-            }
-        }
+        EdiCmdUtils.appendHelp(stringBuilder, HELP_FILE);
     }
 
     @Override
     public void printUsage(StringBuilder stringBuilder) {
+        EdiCmdUtils.appendHelp(stringBuilder, HELP_FILE);
     }
 
     @Override

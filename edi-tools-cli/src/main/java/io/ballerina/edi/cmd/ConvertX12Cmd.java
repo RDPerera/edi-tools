@@ -21,15 +21,7 @@ package io.ballerina.edi.cmd;
 import io.ballerina.cli.BLauncherCmd;
 import picocli.CommandLine;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.PrintStream;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -37,9 +29,12 @@ import java.util.List;
 public class ConvertX12Cmd implements BLauncherCmd {
 
     private static final String CMD_NAME = "convertX12Schema";
-    private static final String EDI_TOOL = "editools.jar";
+    private static final String HELP_FILE = "convertX12.help";
 
     private final PrintStream printStream;
+
+    @CommandLine.Option(names = { "-h", "--help" }, hidden = true, usageHelp = true)
+    private boolean helpFlag;
 
     @CommandLine.Option(names = { "-H", "--headers" }, description = { "Include headers in the input" })
     private boolean headersIncluded;
@@ -47,10 +42,10 @@ public class ConvertX12Cmd implements BLauncherCmd {
     @CommandLine.Option(names = { "-c", "--collection" }, description = { "Switch to collection mode" })
     private boolean collectionMode;
 
-    @CommandLine.Option(names = { "-i", "--input" }, description = { "Input X12 schema path" })
+    @CommandLine.Option(names = { "-i", "--input" }, required = true, description = { "Input X12 schema path" })
     private String inputPath;
 
-    @CommandLine.Option(names = { "-o", "--output" }, description = { "Output path" })
+    @CommandLine.Option(names = { "-o", "--output" }, required = true, description = { "Output path" })
     private String outputPath;
 
     @CommandLine.Option(names = { "-d", "--segdet" }, description = { "Segment details path" })
@@ -62,57 +57,37 @@ public class ConvertX12Cmd implements BLauncherCmd {
 
     @Override
     public void execute() {
-        if (inputPath == null || outputPath == null) {
-            StringBuilder stringBuilder = new StringBuilder();
-            printUsage(stringBuilder);
-            printStream.println(stringBuilder.toString());
+        if (helpFlag) {
+            EdiCmdUtils.printHelp(printStream, HELP_FILE);
             return;
         }
-        StringBuilder stringBuilder = new StringBuilder("Converting schema ");
+        if (inputPath == null || outputPath == null) {
+            throw EdiCmdUtils.missingOptions(CMD_NAME, HELP_FILE);
+        }
+        StringBuilder progress = new StringBuilder("Converting schema ");
         if (collectionMode) {
-            stringBuilder.append("in collection ");
+            progress.append("in collection ");
         }
         if (headersIncluded) {
-            stringBuilder.append("with headers ");
+            progress.append("with headers ");
         }
-        stringBuilder.append(inputPath).append("...");
-        printStream.println(stringBuilder);
-        Class<?> clazz = ConvertX12Cmd.class;
-        ClassLoader classLoader = clazz.getClassLoader();
-        try {
-            Path tempFile = Files.createTempFile(null, ".jar");
-            try (InputStream in = classLoader.getResourceAsStream(EDI_TOOL)) {
-                Files.copy(in, tempFile, StandardCopyOption.REPLACE_EXISTING);
-            }
-            List<String> argsList = new ArrayList<>();
-            argsList.add("bal");
-            argsList.add("run");
-            argsList.add(tempFile.toAbsolutePath().toString());
-            argsList.add("--");
-            argsList.add(CMD_NAME);
-            if (headersIncluded) {
-                argsList.add("H");
-            }
-            if (collectionMode) {
-                argsList.add("c");
-            }
-            argsList.add(inputPath);
-            argsList.add(outputPath);
-            if (segdetPath != null) {
-                argsList.add(segdetPath);
-            }
-            ProcessBuilder processBuilder = new ProcessBuilder(argsList);
-            Process process = processBuilder.start();
-            process.waitFor();
-            java.io.InputStream is = process.getInputStream();
-            byte[] b = new byte[is.available()];
-            is.read(b, 0, b.length);
-            printStream.println(new String(b));
+        progress.append(inputPath).append("...");
+        printStream.println(progress);
 
-        } catch (IOException | InterruptedException e) {
-            printStream.println("Error in generating code. " + e.getMessage());
-            e.printStackTrace();
+        List<String> toolArgs = new ArrayList<>();
+        toolArgs.add(CMD_NAME);
+        if (headersIncluded) {
+            toolArgs.add("H");
         }
+        if (collectionMode) {
+            toolArgs.add("c");
+        }
+        toolArgs.add(inputPath);
+        toolArgs.add(outputPath);
+        if (segdetPath != null) {
+            toolArgs.add(segdetPath);
+        }
+        EdiCmdUtils.runEdiTool(toolArgs);
     }
 
     @Override
@@ -122,25 +97,12 @@ public class ConvertX12Cmd implements BLauncherCmd {
 
     @Override
     public void printLongDesc(StringBuilder stringBuilder) {
-        Class<?> clazz = EdiCmd.class;
-        ClassLoader classLoader = clazz.getClassLoader();
-        InputStream inputStream = classLoader.getResourceAsStream("cli-docs/convertX12.help");
-        if (inputStream != null) {
-            try (InputStreamReader inputStreamREader = new InputStreamReader(inputStream, StandardCharsets.UTF_8);
-                    BufferedReader br = new BufferedReader(inputStreamREader)) {
-                String content = br.readLine();
-                printStream.append(content);
-                while ((content = br.readLine()) != null) {
-                    printStream.append('\n').append(content);
-                }
-            } catch (IOException e) {
-                printStream.println("Helper text is not available.");
-            }
-        }
+        EdiCmdUtils.appendHelp(stringBuilder, HELP_FILE);
     }
 
     @Override
     public void printUsage(StringBuilder stringBuilder) {
+        EdiCmdUtils.appendHelp(stringBuilder, HELP_FILE);
     }
 
     @Override
