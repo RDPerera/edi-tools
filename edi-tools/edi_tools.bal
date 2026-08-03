@@ -199,7 +199,7 @@ EXAMPLES
 
             if (collection) {
                 if (!isInputDir || !isOutputDir) {
-                    return error("In collection mode, both output and input should be a directories");
+                    return error("In collection mode, both output and input should be directories");
                 }
                 check x12xsd:convertFromX12CollectionAndWrite(inputPath, outputPath, headers, segDetlPath);
             } else {
