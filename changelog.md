@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+### Fixed
+
+## [2.2.0] - 2026-08-03
+
+### Added
 - [Generate envelope-aware EDI schemas and typed envelope wrappers (BEP-1441)](https://github.com/ballerina-platform/ballerina-spec/issues/1441)
 - [Populate the schema envelope in X12 headers mode so `convertX12Schema -H` output works with envelope-aware APIs (BEP-1441)](https://github.com/ballerina-platform/ballerina-spec/issues/1441)
 - [Expose the envelope-aware functions in the default module of a `libgen` package (BEP-1441)](https://github.com/ballerina-platform/ballerina-spec/issues/1441)
