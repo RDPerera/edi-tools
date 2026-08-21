@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 ### Fixed
+
+## [2.2.1] - 2026-08-21
+
+### Fixed
+
 - [Strip characters that are illegal in a Ballerina identifier from generated EDIFACT tags, so element names such as "United Nations Dangerous Goods (UNDG) identifier" no longer generate records that fail to compile](https://github.com/ballerina-platform/ballerina-library/issues/9065)
 - [Ship the `UGH` and `UGT` service segment definitions, which are published in the service segment directory rather than in the standard segments directory, so the messages referencing them can be converted and generated](https://github.com/ballerina-platform/ballerina-library/issues/9065)
 - [Suffix colliding sibling segment tags, so a segment listed at two positions of the same segment group no longer generates two record fields with the same name](https://github.com/ballerina-platform/ballerina-library/issues/9065)
