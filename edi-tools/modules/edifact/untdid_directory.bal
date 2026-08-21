@@ -290,10 +290,10 @@ function locateUntdidFiles(string version, string inputPath, string? messageType
     string interactiveIndexName = "IDMDI1." + release;
 
     string[] paths = check listFilesRecursively(inputPath);
-    map<()> interactiveDirs = {};
+    string[] interactiveDirs = [];
     foreach string path in paths {
         if (check file:basename(path)).toUpperAscii() == interactiveIndexName {
-            interactiveDirs[check file:parentPath(path)] = ();
+            interactiveDirs.push(check file:parentPath(path));
         }
     }
 
@@ -308,7 +308,7 @@ function locateUntdidFiles(string version, string inputPath, string? messageType
         if !name.toUpperAscii().endsWith(messageSuffix) {
             continue;
         }
-        if interactiveDirs.hasKey(check file:parentPath(path)) {
+        if interactiveDirs.indexOf(check file:parentPath(path)) !is () {
             continue;
         }
         string code = name.substring(0, name.length() - messageSuffix.length()).toUpperAscii();

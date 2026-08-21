@@ -126,3 +126,34 @@ function testEdifactConversionSkipsInteractiveDirectory() returns error? {
             "An interactive message was converted as a batch message");
     check file:remove("tests/resources/edifact/defects/DEFECT.json");
 }
+
+// The interactive directory is excluded before conversion, so this covers the
+// remaining case: a batch message that cannot be converted at all. One such
+// message must not discard the rest of a whole-release conversion.
+@test:Config {}
+function testEdifactConversionSkipsUnconvertibleMessage() returns error? {
+    check edifact:convertEdifactToEdi("d03a", "tests/resources/edifact/defects", (),
+            DEFECTS_DIRECTORY);
+
+    test:assertTrue(check file:test("tests/resources/edifact/defects/DEFECT.json", file:EXISTS),
+            "A convertible message was dropped along with the unconvertible one");
+    test:assertFalse(check file:test("tests/resources/edifact/defects/NOENVL.json", file:EXISTS),
+            "A message with no UNH/UNT in its segment table was converted");
+    check file:remove("tests/resources/edifact/defects/DEFECT.json");
+}
+
+// Asking for that message by name is all-or-nothing, so it must fail rather
+// than be skipped.
+@test:Config {}
+function testEdifactConversionFailsForRequestedUnconvertibleMessage() returns error? {
+    error? result = edifact:convertEdifactToEdi("d03a", "tests/resources/edifact/defects", "NOENVL",
+            DEFECTS_DIRECTORY);
+
+    test:assertTrue(result is error, "Requesting an unconvertible message type did not fail");
+    if result is error {
+        test:assertTrue(result.message().includes("NOENVL"),
+                "The error does not name the message type: " + result.message());
+    }
+    test:assertFalse(check file:test("tests/resources/edifact/defects/NOENVL.json", file:EXISTS),
+            "A schema was written for an unconvertible message");
+}

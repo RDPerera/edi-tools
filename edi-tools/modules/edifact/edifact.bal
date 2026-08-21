@@ -114,6 +114,10 @@ final regexp:RegExp tagSeparatorReg = re `[ /\-&]`;
 final regexp:RegExp illegalTagCharReg = re `[^A-Za-z0-9_]`;
 final regexp:RegExp leadingDigitReg = re `[0-9].*`;
 
+// Separates words in a generated tag, and disambiguates repeated fields,
+// components and sibling segments.
+const string UNDERSCORE = "_";
+
 public function convertEdifactToEdi(string version, string dir, string? messageType = (),
         string? inputPath = ()) returns error? {
     if inputPath is string {
@@ -572,9 +576,10 @@ function getField(regexp:Groups fieldGroup, string[] fieldNames) returns FieldDe
 // named "United Nations Dangerous Goods (UNDG) identifier" would otherwise
 // produce `..._(UNDG)_...` and the generated module would not compile.
 function getTag(string description) returns string {
-    string tag = illegalTagCharReg.replaceAll(tagSeparatorReg.replaceAll(description, "_"), "");
+    string tag = illegalTagCharReg.replaceAll(
+            tagSeparatorReg.replaceAll(description, UNDERSCORE), "");
     // An identifier cannot start with a digit.
-    return leadingDigitReg.isFullMatch(tag) ? "_" + tag : tag;
+    return leadingDigitReg.isFullMatch(tag) ? UNDERSCORE + tag : tag;
 }
 
 function getMinOccurances(string occurance) returns int? {
@@ -611,7 +616,7 @@ function getComponentName(string[] componentNames, string tag) returns string {
     int length = componentNames.length();
     foreach var name in componentNames {
         if name == tag {
-            string newName = tag + "_" + length.toString();
+            string newName = tag + UNDERSCORE + length.toString();
             componentNames.push(newName);
             return newName;
         }
@@ -631,17 +636,17 @@ function uniqueSiblingTag((Segement|SegmentGroup)[] siblings, string tag) return
         return tag;
     }
     int suffix = 1;
-    while taken.indexOf(tag + "_" + suffix.toString()) !is () {
+    while taken.indexOf(tag + UNDERSCORE + suffix.toString()) !is () {
         suffix += 1;
     }
-    return tag + "_" + suffix.toString();
+    return tag + UNDERSCORE + suffix.toString();
 }
 
 function getFieldNames(string[] fieldNames, string tag) returns string {
     int length = fieldNames.length();
     foreach var name in fieldNames {
         if name == tag {
-            string newName = tag + "_" + length.toString();
+            string newName = tag + UNDERSCORE + length.toString();
             fieldNames.push(newName);
             return newName;
         }
