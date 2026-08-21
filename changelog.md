@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 ### Fixed
+- [Generate EDIFACT schemas whose code generation compiles, and convert a whole D03A release without failing on the interactive message directory](https://github.com/ballerina-platform/ballerina-library/issues/9065)
 
 ## [2.2.0] - 2026-08-03
 

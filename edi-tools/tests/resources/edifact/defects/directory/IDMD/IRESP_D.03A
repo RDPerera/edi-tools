@@ -1,0 +1,17 @@
+                              UN/EDIFACT
+
+                UNITED NATIONS STANDARD MESSAGE (UNSM)
+
+              Interactive response - interactive message
+
+    This message can only be used with ISO 9735 Version 4 or later.
+
+4.3    Message structure
+
+4.3.1  Segment table
+
+Pos    Tag Name                                      S   R
+
+0010   UIH Interactive message header                 M   1
+0020   BGM Beginning of message                       M   1
+0030   UIT Interactive message trailer                M   1

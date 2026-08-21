@@ -1,0 +1,34 @@
+                              UN/EDIFACT
+
+                      Draft directory for test purposes
+
+       This is not a UNECE publication. It is a hand written sample that
+       exercises three defects in the batch message conversion: an element
+       name that is not a legal identifier, a segment repeated inside one
+       segment group, and a reference to a service segment that the standard
+       segments directory does not define.
+
+4.3    Message structure
+
+4.3.1  Segment table
+
+Pos    Tag Name                                      S   R
+
+           HEADER SECTION
+
+0010   UNH Message header                            M   1
+0020   BGM Beginning of message                      M   1
+0030   DGS Dangerous goods                           C   9
+
+0040       ----- Segment group 1  ------------------ C   5-----------+
+0050   RFF Reference                                 M   1           |
+0060   FTX Free text                                 C   5           |
+0070   TAX Duty/tax/fee details                      C   5           |
+0080   FTX Free text                                 C   9-----------+
+
+0090       ----- Segment group 2  ------------------ C   9-----------+
+0100   UGH Anti-collision segment group header       M   1           |
+0110   NAD Name and address                          C   9           |
+0120   UGT Anti-collision segment group trailer      M   1-----------+
+
+0130   UNT Message trailer                           M   1
