@@ -110,6 +110,14 @@ final regexp:RegExp fieldReg = re `(\d+)\s+<A HREF = "\.\./([^"]+)">([^<]+)</A>\
 final regexp:RegExp componentNameReg = re `<H3>[|*]?\s+(\d+)\s+([^<]+)\s+\[[A-Za-z]+\]?\s*</H3>`;
 final regexp:RegExp componentTypeReg = re `Repr:(.*)`;
 
+final regexp:RegExp tagSeparatorReg = re `[ /\-&]`;
+final regexp:RegExp illegalTagCharReg = re `[^A-Za-z0-9_]`;
+final regexp:RegExp leadingDigitReg = re `[0-9].*`;
+
+// Separates words in a generated tag, and disambiguates repeated fields,
+// components and sibling segments.
+const string UNDERSCORE = "_";
+
 public function convertEdifactToEdi(string version, string dir, string? messageType = (),
         string? inputPath = ()) returns error? {
     if inputPath is string {
@@ -382,18 +390,15 @@ function genSementSchema(TableRow row, map<SegmentDef> allSegmentDefinitions, Se
     }
 
     string code = ref;
-    string tag = getTag(row.name);
+    (Segement|SegmentGroup)[] siblings = currentGroup is () ? segments : currentGroup.segments;
+    string tag = uniqueSiblingTag(siblings, getTag(row.name));
     Segement segment = {
         "ref": code,
         tag,
         "minOccurances": getMinOccurances(row.status),
         "maxOccurances": row.maxOccurances
     };
-    if currentGroup is () {
-        segments.push(segment);
-    } else {
-        currentGroup.segments.push(segment);
-    }
+    siblings.push(segment);
     if !segmentDefintions.hasKey(code) {
         SegmentDef? seg = allSegmentDefinitions[code];
         if seg is () {
@@ -429,6 +434,12 @@ function predefinedSegmentDef(string code) returns SegmentDef? {
         }
         "DTM" => {
             return DTM;
+        }
+        "UGH" => {
+            return UGH;
+        }
+        "UGT" => {
+            return UGT;
         }
     }
     return ();
@@ -559,16 +570,16 @@ function getField(regexp:Groups fieldGroup, string[] fieldNames) returns FieldDe
     return {tag: getFieldNames(fieldNames, getTag(tagMatch.substring().trim())), dataType: 'type, repeat: occurance > 1 ? true : false};
 }
 
+// Element names become record field names in the generated code, so a tag has
+// to be a legal Ballerina identifier. Separators become underscores, and any
+// other character that is not legal in an identifier is dropped: an element
+// named "United Nations Dangerous Goods (UNDG) identifier" would otherwise
+// produce `..._(UNDG)_...` and the generated module would not compile.
 function getTag(string description) returns string {
-    string tag = "";
-    foreach string c in description {
-        if c != " " && c != "/" && c != "-" && c != "&" {
-            tag = tag.concat(c);
-        } else {
-            tag = tag.concat("_");
-        }
-    }
-    return tag;
+    string tag = illegalTagCharReg.replaceAll(
+            tagSeparatorReg.replaceAll(description, UNDERSCORE), "");
+    // An identifier cannot start with a digit.
+    return leadingDigitReg.isFullMatch(tag) ? UNDERSCORE + tag : tag;
 }
 
 function getMinOccurances(string occurance) returns int? {
@@ -605,7 +616,7 @@ function getComponentName(string[] componentNames, string tag) returns string {
     int length = componentNames.length();
     foreach var name in componentNames {
         if name == tag {
-            string newName = tag + "_" + length.toString();
+            string newName = tag + UNDERSCORE + length.toString();
             componentNames.push(newName);
             return newName;
         }
@@ -614,11 +625,28 @@ function getComponentName(string[] componentNames, string tag) returns string {
     return tag;
 }
 
+// A message can list the same segment at two positions of one segment group.
+// Both rows carry the same name, so without a suffix codegen emits two record
+// fields with that name and the generated module does not compile. Uses the
+// same "_1", "_2" convention as repeated fields and components.
+function uniqueSiblingTag((Segement|SegmentGroup)[] siblings, string tag) returns string {
+    string[] taken = from Segement|SegmentGroup sibling in siblings
+        select sibling.tag;
+    if taken.indexOf(tag) is () {
+        return tag;
+    }
+    int suffix = 1;
+    while taken.indexOf(tag + UNDERSCORE + suffix.toString()) !is () {
+        suffix += 1;
+    }
+    return tag + UNDERSCORE + suffix.toString();
+}
+
 function getFieldNames(string[] fieldNames, string tag) returns string {
     int length = fieldNames.length();
     foreach var name in fieldNames {
         if name == tag {
-            string newName = tag + "_" + length.toString();
+            string newName = tag + UNDERSCORE + length.toString();
             fieldNames.push(newName);
             return newName;
         }

@@ -1,0 +1,68 @@
+                              UN/EDIFACT
+
+                 Standard segments directory for test purposes
+
+       This is not a UNECE publication. It is a hand written sample that
+       follows the layout of the UNTDID batch files.
+
+     Change indicators
+
+     a plus sign (+)    for an addition
+
+----------------------------------------------------------------------
+
+       BGM  BEGINNING OF MESSAGE
+
+       Function: To indicate the type and function of a message.
+
+010    1004 DOCUMENT IDENTIFIER                        C    1 an..35
+
+----------------------------------------------------------------------
+
+       DGS  DANGEROUS GOODS
+
+       Function: To identify dangerous goods.
+
+010    7124 UNITED NATIONS DANGEROUS GOODS (UNDG) IDENTIFIER   C    1 an..4
+
+020    C223 DANGEROUS GOODS SHIPMENT FLASHPOINT        C    1
+       7106  Shipment flashpoint degree                C      n..3
+       6411  Measurement unit code                     C      an..3
+
+----------------------------------------------------------------------
+
+       FTX  FREE TEXT
+
+       Function: To provide free form or coded text information.
+
+010    4451 TEXT SUBJECT CODE QUALIFIER                M    1 an..3
+
+020    4440 FREE TEXT                                  C    1 an..70
+
+----------------------------------------------------------------------
+
+       NAD  NAME AND ADDRESS
+
+       Function: To specify the name and address of a party.
+
+010    3035 PARTY FUNCTION CODE QUALIFIER              M    1 an..3
+
+020    3164 CITY NAME                                  C    1 an..35
+
+----------------------------------------------------------------------
+
+       RFF  REFERENCE
+
+       Function: To specify a reference.
+
+010    C506 REFERENCE                                  M    1
+       1153  Reference code qualifier                  M      an..3
+       1154  Reference identifier                      C      an..70
+
+----------------------------------------------------------------------
+
+       TAX  DUTY/TAX/FEE DETAILS
+
+       Function: To specify relevant duty/tax/fee information.
+
+010    5283 DUTY OR TAX OR FEE FUNCTION CODE QUALIFIER M    1 an..3
