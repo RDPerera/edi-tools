@@ -120,7 +120,7 @@ public function main() returns error? {
 
     // Parse the full envelope hierarchy into typed records.
     ORDERSInterchange interchange = check interchangeFromEdiString(ediText);
-    foreach var txn in interchange.transactions {
+    foreach ORDERSTransaction txn in interchange.transactions {
         ORDERS|error body = txn.body;
         if body is error {
             io:println("Quarantined: ", body.message());
