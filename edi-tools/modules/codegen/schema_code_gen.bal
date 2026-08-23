@@ -306,10 +306,10 @@ public isolated function interchangeFromEdiString(string ediText) returns ${name
     ${assemble}
 }
 
-# Serialise a ${name}Interchange into EDI text; the inverse of interchangeFromEdiString.
+# Serialize a ${name}Interchange into EDI text; the inverse of interchangeFromEdiString.
 # A transaction whose body is an error is refused — filter or replace it before calling.
 #
-# + msg - The interchange to serialise
+# + msg - The interchange to serialize
 # + return - EDI text, or error
 public isolated function interchangeToEdiString(${name}Interchange msg) returns string|error {
     edi:EdiSchema ediSchema = check edi:getSchema(schemaJson);
