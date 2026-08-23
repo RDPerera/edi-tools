@@ -59,20 +59,20 @@ public function convertEsl(string eslDataPath, string eslSegmentsPath, string ou
 
 public function readEslSchema(json eslSchema, map<edi:EdiSegSchema> segmentDefs) returns edi:EdiSchema|error {
     json[] units = [];
-    var heading = eslSchema.heading;
+    json|error heading = eslSchema.heading;
     if heading is json[] {
         units.push(...heading);
     }
-    var detail = eslSchema.detail;
+    json|error detail = eslSchema.detail;
     if detail is json[] {
         units.push(...detail);
     }
-    var summary = eslSchema.summary;
+    json|error summary = eslSchema.summary;
     if summary is json[] {
         units.push(...summary);
     }
     map<json> rootSegmentGroup = {};
-    var rootName = eslSchema.name;
+    json|error rootName = eslSchema.name;
     if rootName !is string {
         rootName = eslSchema.id;      
     }
@@ -105,17 +105,17 @@ public function readSegmentGroup(json segGroupDef, map<edi:EdiSegSchema> segment
     if segGroupDef.usage == "M" {
         segGroupSchema.minOccurances = 1;
     }
-    var maxOccurs = segGroupDef.count;
+    json|error maxOccurs = segGroupDef.count;
     if maxOccurs is int {
         segGroupSchema.maxOccurances = maxOccurs;
     }
-    var items = segGroupDef.items;
+    json|error items = segGroupDef.items;
     if items !is json[] {
         return error("Invalid segment group schema. Items should be an array. " + segGroupDef.toString());
     }
     foreach json segmentRef in items {
-        var code = segmentRef.idRef;
-        var groupId = segmentRef.groupId;
+        json|error code = segmentRef.idRef;
+        json|error groupId = segmentRef.groupId;
         if code is string {
             log:printDebug("Reading segment reference: " + code);
             edi:EdiSegSchema? segmentDef = segmentDefs[code];
@@ -126,7 +126,7 @@ public function readSegmentGroup(json segGroupDef, map<edi:EdiSegSchema> segment
             if segmentRef.usage == "M" {
                 segRef.minOccurances = 1;
             }
-            var segMaxOccurs = segmentRef.count;
+            json|error segMaxOccurs = segmentRef.count;
             if segMaxOccurs is int {
                 segRef.maxOccurances = segMaxOccurs;
             }

@@ -37,11 +37,11 @@ public function readSegmentSchemas(json basedef) returns map<edi:EdiSegSchema>|e
     }
     map<edi:EdiSegSchema> segmentSchemas = {};
     foreach json segDef in segDefs {
-        var segName = segDef.name;
+        json|error segName = segDef.name;
         if segName !is string {
             return error("Segment name is required. " + segDef.toString());
         }
-        var segCode = segDef.id;
+        json|error segCode = segDef.id;
         if segCode !is string {
             return error("Segment code is required. " + segDef.toString());
         }

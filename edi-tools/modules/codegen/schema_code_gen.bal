@@ -99,7 +99,7 @@ final readonly & json schemaJson = ${schema.toJsonString()};
 // function only needs to reference them by name.
 function renderEnvelopeRecords(string name, edi:EdiEnvelopeSchema env) returns string {
     string transactionRecord = string `
-# A single transaction within a ${name} interchange.
+# A single transaction within the ${name} interchange.
 #
 # + transactionHeader - Transaction header segment
 # + body - Parsed ${name} body, or the parse error when the body is malformed
@@ -116,7 +116,7 @@ public type ${name}Transaction record {|
     // "interchange", "group" (when present), and "transaction".
     string headersRecord = env?.group is edi:EdiEnvelopeLevel ?
         string `
-# Envelope headers of a ${name} interchange.
+# Envelope headers of the ${name} interchange.
 #
 # + interchange - Interchange header
 # + group - Functional group header
@@ -128,7 +128,7 @@ public type ${name}Headers record {|
 |};
 ` :
         string `
-# Envelope headers of a ${name} interchange.
+# Envelope headers of the ${name} interchange.
 #
 # + interchange - Interchange header
 # + 'transaction - Transaction header
@@ -140,7 +140,7 @@ public type ${name}Headers record {|
 
     if env?.group is edi:EdiEnvelopeLevel {
         return string `${transactionRecord}
-# A functional group within a ${name} interchange.
+# A functional group within the ${name} interchange.
 #
 # + groupHeader - Group header segment
 # + transactions - Transactions in the group
@@ -306,10 +306,10 @@ public isolated function interchangeFromEdiString(string ediText) returns ${name
     ${assemble}
 }
 
-# Serialise a ${name}Interchange into EDI text; the inverse of interchangeFromEdiString.
+# Serialize the ${name}Interchange into EDI text; the inverse of interchangeFromEdiString.
 # A transaction whose body is an error is refused — filter or replace it before calling.
 #
-# + msg - The interchange to serialise
+# + msg - The interchange to serialize
 # + return - EDI text, or error
 public isolated function interchangeToEdiString(${name}Interchange msg) returns string|error {
     edi:EdiSchema ediSchema = check edi:getSchema(schemaJson);

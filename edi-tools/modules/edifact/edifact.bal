@@ -136,7 +136,7 @@ public function convertEdifactToEdi(string version, string dir, string? messageT
 
     SegmentDefintions allSegmentDefinitions = {};
     regexp:Groups[] msgGroups = msgTypeReg.findAllGroups(msgTypes);    
-    foreach var msgGroup in msgGroups {
+    foreach regexp:Groups msgGroup in msgGroups {
         regexp:Span? urlMatch = msgGroup[1];
         regexp:Span? codeMatch = msgGroup[2];
         if urlMatch is () || codeMatch is () {
@@ -313,7 +313,7 @@ function genSegmentsSchema(TableRow[] rows, map<SegmentDef> allSegmentDefinition
     SegmentGroup? currentGroup = ();
     foreach TableRow row in rows {
         if row.groupNumber !is () {
-            var [segmentGroup, depth] = check genSegmentGroupSchema(row);
+            [SegmentGroup, int] [segmentGroup, depth] = check genSegmentGroupSchema(row);
             if depth == 0 {
                 segmentGroupsSeq = [segmentGroup];
                 segments.push(segmentGroup);
@@ -614,7 +614,7 @@ function isSingleSegment(string s) returns boolean {
 // Otherwise, it will generate Ballerina fields with same name.
 function getComponentName(string[] componentNames, string tag) returns string {
     int length = componentNames.length();
-    foreach var name in componentNames {
+    foreach string name in componentNames {
         if name == tag {
             string newName = tag + UNDERSCORE + length.toString();
             componentNames.push(newName);
@@ -644,7 +644,7 @@ function uniqueSiblingTag((Segement|SegmentGroup)[] siblings, string tag) return
 
 function getFieldNames(string[] fieldNames, string tag) returns string {
     int length = fieldNames.length();
-    foreach var name in fieldNames {
+    foreach string name in fieldNames {
         if name == tag {
             string newName = tag + UNDERSCORE + length.toString();
             fieldNames.push(newName);
