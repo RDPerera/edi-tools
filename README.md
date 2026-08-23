@@ -127,11 +127,12 @@ public function main() returns error? {
     // Parse the full envelope hierarchy into typed records.
     ORDERSInterchange interchange = check interchangeFromEdiString(ediText);
     foreach var txn in interchange.transactions {
-        if txn.body is error {
-            io:println("Quarantined: ", txn.body.message());
+        ORDERS|error body = txn.body;
+        if body is error {
+            io:println("Quarantined: ", body.message());
             continue;
         }
-        io:println(txn.body);
+        io:println(body);
     }
 
     // Serialize a (filtered/transformed) interchange back to EDI text.
@@ -165,9 +166,9 @@ import citymart/porder.m855;
 
 public function main() returns error? {
     string orderText = check io:fileReadString("orders/order10.edi");
-    m850:Purchase_Order purchaseOrder = check m850:fromEdiString(orderText);
+    m850:EDI_850_Purchase_Order purchaseOrder = check m850:fromEdiString(orderText);
     // ...
-    m855:Purchase_Order_Acknowledgement orderAck = { /* ... */ };
+    m855:EDI_855_Purchase_Order_Acknowledgement orderAck = { /* ... */ };
     string ackText = check m855:toEdiString(orderAck);
     check io:fileWriteString("acks/ack10.edi", ackText);
 }
@@ -187,7 +188,7 @@ public function main() returns error? {
     anydata headers = check porder:headersFromEdiString(orderText, porder:EDI_850);
 
     any interchange = check porder:interchangeFromEdiString(orderText, porder:EDI_850);
-    m850:Purchase_OrderInterchange typed = check interchange.ensureType();
+    m850:EDI_850_Purchase_OrderInterchange typed = check interchange.ensureType();
     io:println(typed.groups.length());
 }
 ```
