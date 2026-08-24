@@ -18,6 +18,7 @@ import ballerina/edi;
 import ballerina/io;
 
 public function generateCodeForSchema(json schema, string outputPath) returns error? {
+    json embeddedSchema = stripDiscriminatorDefaults(schema.toJson());
     edi:EdiSchema ediSchema = check edi:getSchema(schema);
     BalRecord[] records = check generateCode(ediSchema);
     string recordsString = "";
@@ -85,11 +86,36 @@ ${envelopeFnsCode}
 ${recordsString}
 ${envelopeRecordsCode}
 
-final readonly & json schemaJson = ${schema.toJsonString()};
+final readonly & json schemaJson = ${embeddedSchema.toJsonString()};
     `;
 
     check io:fileWriteString(outputPath, schemaCode);
 
+}
+
+// Removes `"discriminator": false` entries from a schema JSON produced by serializing typed
+// schema records. The runtime fills the default back in when the schema is loaded, so the key
+// is pure noise — and stripping it keeps generated schemas loadable by runtime versions that
+// predate the value-constraint attributes, as long as the feature is not actually used.
+isolated function stripDiscriminatorDefaults(json value) returns json {
+    if value is map<json> {
+        map<json> result = {};
+        foreach [string, json] [key, member] in value.entries() {
+            if key == "discriminator" && member == false {
+                continue;
+            }
+            result[key] = stripDiscriminatorDefaults(member);
+        }
+        return result;
+    }
+    if value is json[] {
+        json[] result = [];
+        foreach json member in value {
+            result.push(stripDiscriminatorDefaults(member));
+        }
+        return result;
+    }
+    return value;
 }
 
 // Renders the typed envelope records (Interchange / FunctionalGroup / Transaction)

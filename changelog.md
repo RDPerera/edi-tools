@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- [Extract X12 XSD enumerations (inline and named simple types resolved through `xs:include`, e.g. a shared `Codes.xsd`) into the generated schema as `values` constraints, marking inline enumerations of same-code sibling definitions as `discriminator`s for qualifier-based segment matching](https://github.com/wso2/product-integrator/issues/2150)
+- [Read optional `values` code lists from ESL element definitions into the generated schema](https://github.com/wso2/product-integrator/issues/2150)
 - [Generate envelope-aware EDI schemas and typed envelope wrappers (BEP-1441)](https://github.com/ballerina-platform/ballerina-spec/issues/1441)
 - [Populate the schema envelope in X12 headers mode so `convertX12Schema -H` output works with envelope-aware APIs (BEP-1441)](https://github.com/ballerina-platform/ballerina-spec/issues/1441)
 - [Expose the envelope-aware functions in the default module of a `libgen` package (BEP-1441)](https://github.com/ballerina-platform/ballerina-spec/issues/1441)

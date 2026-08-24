@@ -11,3 +11,7 @@ distribution = "2201.11.0"
 org = "ballerina"
 name = "edi"
 version = "1.6.0"
+# The value-constraint schema attributes (values/discriminator) are not released yet.
+# Until ballerina/edi ships them, build against the locally published module:
+#   cd module-ballerina-edi/ballerina && bal pack && bal push --repository=local
+repository = "local"

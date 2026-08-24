@@ -47,14 +47,39 @@ public function convertEsl(string eslDataPath, string eslSegmentsPath, string ou
             }
             check fixSchema(ediMapping);
             string mappingPath = check file:joinPath(outputPath, ediName + ".json");
-            check io:fileWriteJson(mappingPath, ediMapping.toJson());
+            check io:fileWriteJson(mappingPath, stripDiscriminatorDefaults(ediMapping.toJson()));
         }
     } else {
         json eslJson = check yaml:readFile(eslDataPath);
         edi:EdiSchema ediSchema = check readEslSchema(eslJson, segDefinitions);
         check fixSchema(ediSchema);
-        check io:fileWriteJson(outputPath, ediSchema.toJson());
+        check io:fileWriteJson(outputPath, stripDiscriminatorDefaults(ediSchema.toJson()));
     }
+}
+
+// Removes `"discriminator": false` entries from a schema JSON produced by serializing typed
+// schema records. The runtime fills the default back in when the schema is loaded, so the key
+// is pure noise — and stripping it keeps generated schemas loadable by runtime versions that
+// predate the value-constraint attributes, as long as the feature is not actually used.
+function stripDiscriminatorDefaults(json value) returns json {
+    if value is map<json> {
+        map<json> result = {};
+        foreach [string, json] [key, member] in value.entries() {
+            if key == "discriminator" && member == false {
+                continue;
+            }
+            result[key] = stripDiscriminatorDefaults(member);
+        }
+        return result;
+    }
+    if value is json[] {
+        json[] result = [];
+        foreach json member in value {
+            result.push(stripDiscriminatorDefaults(member));
+        }
+        return result;
+    }
+    return value;
 }
 
 public function readEslSchema(json eslSchema, map<edi:EdiSegSchema> segmentDefs) returns edi:EdiSchema|error {

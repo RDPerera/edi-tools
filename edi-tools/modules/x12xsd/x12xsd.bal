@@ -27,14 +27,15 @@ map<string> conditionalFeildsMap = {};
 public function convertFromX12XsdAndWrite(string inPath, string outPath, string segdetPath = "") returns error? {
     loadConditionalFieldsMap(segdetPath);
     xml x12xsd = check io:fileReadXml(inPath);
-    edi:EdiSchema ediSchema = check convertFromX12Xsd(x12xsd);
-    check io:fileWriteJson(outPath, ediSchema);
+    string|file:Error dirPath = file:parentPath(inPath);
+    edi:EdiSchema ediSchema = check convertFromX12Xsd(x12xsd, dirPath is string ? dirPath : "");
+    check io:fileWriteJson(outPath, stripDiscriminatorDefaults(ediSchema.toJson()));
 }
 
 public function convertFromX12WithHeadersAndWrite(string inPath, string outPath, string segdetPath = "") returns error? {
     loadConditionalFieldsMap(segdetPath);
     edi:EdiSchema ediSchema = check convertFromX12WithHeaders(inPath);
-    check io:fileWriteJson(outPath, ediSchema);
+    check io:fileWriteJson(outPath, stripDiscriminatorDefaults(ediSchema.toJson()));
 }
 
 public function convertFromX12CollectionAndWrite(string inPath, string outPath, boolean withHeaders, string segdetPath = "") returns error? {
@@ -47,7 +48,7 @@ public function convertFromX12CollectionAndWrite(string inPath, string outPath, 
                 string dirName = check file:basename(inFile.absPath);
                 string outputPathGenerated = isOutputDir ? check file:joinPath(outPath, dirName + ".json") : outPath;
                 edi:EdiSchema ediSchema = check convertFromX12WithHeaders(inFile.absPath);
-                check io:fileWriteJson(outputPathGenerated, ediSchema);
+                check io:fileWriteJson(outputPathGenerated, stripDiscriminatorDefaults(ediSchema.toJson()));
             }
         }
     } else {
@@ -57,13 +58,13 @@ public function convertFromX12CollectionAndWrite(string inPath, string outPath, 
                 ediName = ediName.substring(0, ediName.length() - ".xsd".length());
             }
             xml x12xsd = check io:fileReadXml(inFile.absPath);
-            edi:EdiSchema ediSchema = check convertFromX12Xsd(x12xsd);
-            check io:fileWriteJson(check file:joinPath(outPath, ediName + ".json"), ediSchema);
+            edi:EdiSchema ediSchema = check convertFromX12Xsd(x12xsd, inPath);
+            check io:fileWriteJson(check file:joinPath(outPath, ediName + ".json"), stripDiscriminatorDefaults(ediSchema.toJson()));
         }
     }
 }
 
-public function convertFromX12Xsd(xml x12xsd) returns edi:EdiSchema|error {
+public function convertFromX12Xsd(xml x12xsd, string dirPath = "") returns edi:EdiSchema|error {
     xml elements = x12xsd/<xs:element>;
     xml root = elements[0];
     string rootName = "";
@@ -77,8 +78,10 @@ public function convertFromX12Xsd(xml x12xsd) returns edi:EdiSchema|error {
     if !rootName.startsWith("X12_") {
         return error("Invalid X12 schema");
     }
-    edi:EdiSegGroupSchema rootSegGroupSchema = check convertSegmentGroup(root, x12xsd, ediSchema);
+    map<string[]> namedEnums = collectNamedEnumerations(x12xsd, dirPath);
+    edi:EdiSegGroupSchema rootSegGroupSchema = check convertSegmentGroup(root, x12xsd, ediSchema, namedEnums, dirPath);
     ediSchema.segments = rootSegGroupSchema.segments;
+    refineDiscriminators(rootSegGroupSchema, ediSchema);
     check populateX12Envelope(ediSchema);
     return ediSchema;
 }
@@ -188,8 +191,10 @@ function convertFromX12WithHeaders(string inPath) returns edi:EdiSchema|error {
     if !rootName.startsWith("X12_") {
         return error("Invalid X12 schema");
     }
-    edi:EdiSegGroupSchema rootSegGroupSchema = check convertSegmentGroup(root, interchangeXsd, ediSchema, inPath);
+    map<string[]> namedEnums = collectNamedEnumerations(interchangeXsd, inPath);
+    edi:EdiSegGroupSchema rootSegGroupSchema = check convertSegmentGroup(root, interchangeXsd, ediSchema, namedEnums, inPath);
     ediSchema.segments = rootSegGroupSchema.segments;
+    refineDiscriminators(rootSegGroupSchema, ediSchema);
     check populateX12EnvelopeFromHeaders(ediSchema);
     return ediSchema;
 }
@@ -271,7 +276,7 @@ function singleEnvelopeGroup(edi:EdiUnitSchema[] units, edi:EdiSchema schema, st
     return <edi:EdiSegGroupSchema>units[0];
 }
 
-function convertSegmentGroup(xml segmentGroup, xml x12xsd, edi:EdiSchema schema, string dirPath = "", int parentMinOccur = 0, int parentMaxOccur = 1) returns edi:EdiSegGroupSchema|error {
+function convertSegmentGroup(xml segmentGroup, xml x12xsd, edi:EdiSchema schema, map<string[]> namedEnums, string dirPath = "", int parentMinOccur = 0, int parentMaxOccur = 1) returns edi:EdiSegGroupSchema|error {
     xml elements = segmentGroup/<xs:complexType>/<xs:sequence>/<xs:element>;
     string tag = "";
     do {
@@ -293,16 +298,17 @@ function convertSegmentGroup(xml segmentGroup, xml x12xsd, edi:EdiSchema schema,
             schema.tag = ref;
             xml innerX12xsd = check readInnerX12xsd(x12xsd, dirPath);
             xml rootElement = check validateAndGetRootEelement(innerX12xsd);
-            edi:EdiSegGroupSchema innerSegGroupSchema = check convertSegmentGroup(rootElement, innerX12xsd, schema, dirPath);
+            map<string[]> innerNamedEnums = collectNamedEnumerations(innerX12xsd, dirPath);
+            edi:EdiSegGroupSchema innerSegGroupSchema = check convertSegmentGroup(rootElement, innerX12xsd, schema, innerNamedEnums, dirPath);
             segGroupSchema.segments.push(innerSegGroupSchema);
         }
         else if ref.startsWith("Loop_") {
             xml segGroupElement = check getUnitElement(ref, x12xsd);
-            edi:EdiSegGroupSchema childSegGroupSchema = check convertSegmentGroup(segmentGroup = segGroupElement, x12xsd = x12xsd, schema = schema, parentMaxOccur = eleMaxOccur, parentMinOccur = eleMinOccur);
+            edi:EdiSegGroupSchema childSegGroupSchema = check convertSegmentGroup(segmentGroup = segGroupElement, x12xsd = x12xsd, schema = schema, namedEnums = namedEnums, dirPath = dirPath, parentMaxOccur = eleMaxOccur, parentMinOccur = eleMinOccur);
             segGroupSchema.segments.push(childSegGroupSchema);
         } else {
             if !schema.segmentDefinitions.hasKey((ref)) {
-                edi:EdiSegSchema segSchema = check convertSegment(ref, eleMinOccur, eleMaxOccur, x12xsd);
+                edi:EdiSegSchema segSchema = check convertSegment(ref, eleMinOccur, eleMaxOccur, x12xsd, namedEnums);
                 schema.segmentDefinitions[ref] = segSchema;
             }
             edi:EdiUnitRef segRef = {ref: ref, minOccurances: eleMinOccur, maxOccurances: eleMaxOccur};
@@ -312,7 +318,7 @@ function convertSegmentGroup(xml segmentGroup, xml x12xsd, edi:EdiSchema schema,
     return segGroupSchema;
 }
 
-function convertSegment(string segmentName, int minOccurs, int maxOccurs, xml x12xsd) returns edi:EdiSegSchema|error {
+function convertSegment(string segmentName, int minOccurs, int maxOccurs, xml x12xsd, map<string[]> namedEnums) returns edi:EdiSegSchema|error {
     xml segElement = check getUnitElement(segmentName, x12xsd);
     string:RegExp underscorePlaceholder = re `_`;
     string[] nameParts = underscorePlaceholder.split(segmentName);
@@ -347,7 +353,7 @@ function convertSegment(string segmentName, int minOccurs, int maxOccurs, xml x1
                 log:printWarn(string `Data type not defined. Defaulting it to string. Segment name: ${segmentName}, Field name: ${fieldName}`);
                 fieldSchema.dataType = edi:STRING;
             } else {
-                check convertCompositeField(fieldSchema, compositeElements, segmentName, fieldName);
+                check convertCompositeField(fieldSchema, compositeElements, segmentName, fieldName, namedEnums);
             }
         } else {
             edi:EdiDataType|error dataType = getDataType(fieldDataType);
@@ -358,12 +364,174 @@ function convertSegment(string segmentName, int minOccurs, int maxOccurs, xml x1
                 fieldSchema.dataType = dataType;
             }
         }
+        applyEnumerationValues(fieldElement, fieldSchema, namedEnums);
         segSchema.fields.push(fieldSchema);
     }
     return segSchema;
 }
 
-function convertCompositeField(edi:EdiFieldSchema fieldSchema, xml compositeElements, string segmentName, string fieldName) returns error? {
+// Attaches the value set of a simple field or component to its schema node.
+// Inline enumerations narrow the code set for one specific position of the transaction
+// (e.g. <xs:enumeration value="1L"/> on REF01 of the member policy definition), so they are
+// marked as discriminator candidates; refineDiscriminators() keeps the mark only where sibling
+// definitions share a segment code. Named simple types resolve to the full standard code list
+// of the element (e.g. DE_128 in a shared Codes.xsd) and are attached as plain value
+// constraints, which are validated when writing EDI but never affect segment matching.
+function applyEnumerationValues(xml element, edi:EdiFieldSchema|edi:EdiComponentSchema nodeSchema, map<string[]> namedEnums) {
+    if nodeSchema is edi:EdiFieldSchema && nodeSchema.components.length() > 0 {
+        // Composite fields hold structured values; enumerations apply to their components.
+        return;
+    }
+    xml inlineSimpleType = element/<xs:simpleType>;
+    if inlineSimpleType.length() > 0 {
+        string[] enumerationValues = readEnumerationValues(inlineSimpleType);
+        if enumerationValues.length() > 0 {
+            nodeSchema.values = enumerationValues;
+            nodeSchema.discriminator = true;
+        }
+        return;
+    }
+    string|error typeRef = element.'type;
+    if typeRef is string {
+        string[]? namedValues = namedEnums[typeRef];
+        if namedValues is string[] {
+            nodeSchema.values = namedValues.clone();
+        }
+    }
+}
+
+// Removes `"discriminator": false` entries from a schema JSON produced by serializing typed
+// schema records. The runtime fills the default back in when the schema is loaded, so the key
+// is pure noise — and stripping it keeps generated schemas loadable by runtime versions that
+// predate the value-constraint attributes, as long as the feature is not actually used.
+function stripDiscriminatorDefaults(json value) returns json {
+    if value is map<json> {
+        map<json> result = {};
+        foreach [string, json] [key, member] in value.entries() {
+            if key == "discriminator" && member == false {
+                continue;
+            }
+            result[key] = stripDiscriminatorDefaults(member);
+        }
+        return result;
+    }
+    if value is json[] {
+        json[] result = [];
+        foreach json member in value {
+            result.push(stripDiscriminatorDefaults(member));
+        }
+        return result;
+    }
+    return value;
+}
+
+function readEnumerationValues(xml simpleType) returns string[] {
+    string[] values = [];
+    xml enumerations = simpleType/<xs:restriction>/<xs:enumeration>;
+    foreach xml enumeration in enumerations {
+        string|error value = enumeration.value;
+        if value is string {
+            values.push(value);
+        }
+    }
+    return values;
+}
+
+// Collects the enumeration values of every named simple type visible to the given document:
+// types declared in the document itself and types declared in schemas pulled in via xs:include
+// (e.g. the shared Codes.xsd of WPC-style X12 schema sets). Unresolvable includes are reported
+// once and skipped, so the conversion still succeeds without the value sets they define.
+function collectNamedEnumerations(xml doc, string dirPath) returns map<string[]> {
+    map<string[]> namedEnums = {};
+    collectNamedEnumerationsFromDoc(doc, namedEnums);
+    xml includes = doc/<xs:include>;
+    foreach xml include in includes {
+        string|error location = include.schemaLocation;
+        if location is error {
+            continue;
+        }
+        if dirPath == "" {
+            log:printWarn(string `Included schema "${location}" cannot be resolved without the location of the input schema file. Value sets defined in it are omitted.`);
+            continue;
+        }
+        string|file:Error includePath = file:joinPath(dirPath, location);
+        xml|error included = includePath is string ? io:fileReadXml(includePath) : includePath;
+        if included is error {
+            log:printWarn(string `Included schema "${location}" could not be read. Value sets defined in it are omitted. Error: ${included.message()}`);
+            continue;
+        }
+        collectNamedEnumerationsFromDoc(included, namedEnums);
+    }
+    return namedEnums;
+}
+
+function collectNamedEnumerationsFromDoc(xml doc, map<string[]> namedEnums) {
+    xml simpleTypes = doc/<xs:simpleType>;
+    foreach xml simpleType in simpleTypes {
+        string|error name = simpleType.name;
+        if name is error {
+            continue;
+        }
+        string[] values = readEnumerationValues(simpleType);
+        if values.length() > 0 {
+            namedEnums[name] = values;
+        }
+    }
+}
+
+// Inline enumerations are marked as discriminator candidates during conversion. This pass keeps
+// the discriminators only on definitions that need them to be told apart — those sharing a
+// segment code with a sibling definition in the same sequence — and clears the rest, leaving
+// plain value constraints that do not affect segment matching.
+function refineDiscriminators(edi:EdiSegGroupSchema rootGroup, edi:EdiSchema schema) {
+    map<boolean> ambiguousDefs = {};
+    collectAmbiguousDefinitions(rootGroup, schema, ambiguousDefs);
+    foreach [string, edi:EdiSegSchema] [defName, segDef] in schema.segmentDefinitions.entries() {
+        if !ambiguousDefs.hasKey(defName) {
+            clearDiscriminators(segDef);
+        }
+    }
+}
+
+function collectAmbiguousDefinitions(edi:EdiSegGroupSchema group, edi:EdiSchema schema, map<boolean> ambiguousDefs) {
+    map<string[]> refsByCode = {};
+    foreach edi:EdiUnitSchema unit in group.segments {
+        if unit is edi:EdiUnitRef {
+            edi:EdiSegSchema? def = schema.segmentDefinitions[unit.ref];
+            if def is edi:EdiSegSchema {
+                string[]? refs = refsByCode[def.code];
+                if refs is string[] {
+                    refs.push(unit.ref);
+                } else {
+                    refsByCode[def.code] = [unit.ref];
+                }
+            }
+        } else if unit is edi:EdiSegGroupSchema {
+            collectAmbiguousDefinitions(unit, schema, ambiguousDefs);
+        }
+    }
+    foreach string[] refs in refsByCode {
+        if refs.length() > 1 {
+            foreach string ref in refs {
+                ambiguousDefs[ref] = true;
+            }
+        }
+    }
+}
+
+function clearDiscriminators(edi:EdiSegSchema segDef) {
+    foreach edi:EdiFieldSchema fieldSchema in segDef.fields {
+        fieldSchema.discriminator = false;
+        foreach edi:EdiComponentSchema componentSchema in fieldSchema.components {
+            componentSchema.discriminator = false;
+            foreach edi:EdiSubcomponentSchema subcomponentSchema in componentSchema.subcomponents {
+                subcomponentSchema.discriminator = false;
+            }
+        }
+    }
+}
+
+function convertCompositeField(edi:EdiFieldSchema fieldSchema, xml compositeElements, string segmentName, string fieldName, map<string[]> namedEnums) returns error? {
     fieldSchema.dataType = edi:COMPOSITE;
     foreach xml compositeElement in compositeElements {
         string compositeFieldName = "";
@@ -398,6 +566,7 @@ function convertCompositeField(edi:EdiFieldSchema fieldSchema, xml compositeElem
                 compositeFieldSchema.dataType = dataType;
             }
         }
+        applyEnumerationValues(compositeElement, compositeFieldSchema, namedEnums);
         fieldSchema.components.push(compositeFieldSchema);
     }
 }
