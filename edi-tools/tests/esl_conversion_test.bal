@@ -55,8 +55,8 @@ function testEslElementValuesAreConverted() returns error? {
 
     // fields[0] is the segment code placeholder; fields[1] is element 128.
     test:assertEquals(refSegment.fields[1].values, ["0F", "1L", "17"]);
-    test:assertFalse(refSegment.fields[1].discriminator,
-        "ESL code lists must be plain value constraints; discriminators are opted into by schema authors");
+    test:assertEquals(refSegment.fields[1].discriminator, (),
+        "ESL code lists must be plain value constraints; discriminators are declared by schema authors");
 
     // Element 127 declares no code list.
     test:assertEquals(refSegment.fields[2].values, ());
@@ -64,5 +64,5 @@ function testEslElementValuesAreConverted() returns error? {
     // The same element referenced as a component of composite C040 must carry its code list too.
     edi:EdiFieldSchema composite = refSegment.fields[3];
     test:assertEquals(composite.components[0].values, ["0F", "1L", "17"]);
-    test:assertFalse(composite.components[0].discriminator);
+    test:assertEquals(composite.components[0].discriminator, ());
 }

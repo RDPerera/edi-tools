@@ -78,25 +78,26 @@ function testInlineEnumerationsBecomeValueDiscriminators() returns error? {
     // enumerations must be attached as values and marked as discriminators.
     edi:EdiFieldSchema policyQualifier = check getField(schema, "REF_MemberPolicyNumber_2000",
         "REF01__ReferenceIdentificationQualifier");
-    test:assertEquals(policyQualifier.values, ["1L"]);
-    test:assertTrue(policyQualifier.discriminator, "Qualifier of a same-code sibling definition must be a discriminator");
+    test:assertEquals(policyQualifier.discriminator, ["1L"],
+        "Qualifier of a same-code sibling definition must become a discriminator");
+    test:assertEquals(policyQualifier.values, (), "A discriminating enumeration is not duplicated into values");
 
     edi:EdiFieldSchema supplementalQualifier = check getField(schema, "REF_MemberSupplementalIdentifier_2000",
         "REF01__ReferenceIdentificationQualifier");
-    test:assertEquals(supplementalQualifier.values, ["17", "23", "DX"]);
-    test:assertTrue(supplementalQualifier.discriminator);
+    test:assertEquals(supplementalQualifier.discriminator, ["17", "23", "DX"]);
 
-    // ST has no same-code sibling: its inline enumeration stays as a plain value
+    // ST has no same-code sibling: its inline enumeration is demoted to a plain value
     // constraint and must not participate in segment matching.
     edi:EdiFieldSchema stIdentifier = check getField(schema, "ST_TransactionSetHeader",
         "ST01__TransactionSetIdentifierCode");
     test:assertEquals(stIdentifier.values, ["834"]);
-    test:assertFalse(stIdentifier.discriminator, "Unique-code definitions must not get discriminators");
+    test:assertEquals(stIdentifier.discriminator, (), "Unique-code definitions must not get discriminators");
 
     // Non-enumerated fields must carry no value constraints.
     edi:EdiFieldSchema policyIdentifier = check getField(schema, "REF_MemberPolicyNumber_2000",
         "REF02__MemberGroupOrPolicyNumber");
     test:assertEquals(policyIdentifier.values, ());
+    test:assertEquals(policyIdentifier.discriminator, ());
 }
 
 @test:Config
@@ -112,13 +113,13 @@ function testNamedTypeEnumerationsResolvedFromIncludedSchema() returns error? {
     edi:EdiFieldSchema subscriberQualifier = check getField(schema, "REF_SubscriberIdentifier_2000",
         "REF01__ReferenceIdentificationQualifier");
     test:assertEquals(subscriberQualifier.values, ["0F", "1L", "17", "23", "DX"]);
-    test:assertFalse(subscriberQualifier.discriminator,
+    test:assertEquals(subscriberQualifier.discriminator, (),
         "Named-type code lists must stay plain value constraints even for same-code siblings");
 
     edi:EdiFieldSchema stIdentifier = check getField(schema, "ST_TransactionSetHeader",
         "ST01__TransactionSetIdentifierCode");
     test:assertEquals(stIdentifier.values, ["834"]);
-    test:assertFalse(stIdentifier.discriminator);
+    test:assertEquals(stIdentifier.discriminator, ());
 }
 
 function getField(edi:EdiSchema schema, string segDefName, string fieldTag) returns edi:EdiFieldSchema|error {

@@ -29,13 +29,13 @@ public function convertFromX12XsdAndWrite(string inPath, string outPath, string 
     xml x12xsd = check io:fileReadXml(inPath);
     string|file:Error dirPath = file:parentPath(inPath);
     edi:EdiSchema ediSchema = check convertFromX12Xsd(x12xsd, dirPath is string ? dirPath : "");
-    check io:fileWriteJson(outPath, stripDiscriminatorDefaults(ediSchema.toJson()));
+    check io:fileWriteJson(outPath, ediSchema);
 }
 
 public function convertFromX12WithHeadersAndWrite(string inPath, string outPath, string segdetPath = "") returns error? {
     loadConditionalFieldsMap(segdetPath);
     edi:EdiSchema ediSchema = check convertFromX12WithHeaders(inPath);
-    check io:fileWriteJson(outPath, stripDiscriminatorDefaults(ediSchema.toJson()));
+    check io:fileWriteJson(outPath, ediSchema);
 }
 
 public function convertFromX12CollectionAndWrite(string inPath, string outPath, boolean withHeaders, string segdetPath = "") returns error? {
@@ -48,7 +48,7 @@ public function convertFromX12CollectionAndWrite(string inPath, string outPath, 
                 string dirName = check file:basename(inFile.absPath);
                 string outputPathGenerated = isOutputDir ? check file:joinPath(outPath, dirName + ".json") : outPath;
                 edi:EdiSchema ediSchema = check convertFromX12WithHeaders(inFile.absPath);
-                check io:fileWriteJson(outputPathGenerated, stripDiscriminatorDefaults(ediSchema.toJson()));
+                check io:fileWriteJson(outputPathGenerated, ediSchema);
             }
         }
     } else {
@@ -59,7 +59,7 @@ public function convertFromX12CollectionAndWrite(string inPath, string outPath, 
             }
             xml x12xsd = check io:fileReadXml(inFile.absPath);
             edi:EdiSchema ediSchema = check convertFromX12Xsd(x12xsd, inPath);
-            check io:fileWriteJson(check file:joinPath(outPath, ediName + ".json"), stripDiscriminatorDefaults(ediSchema.toJson()));
+            check io:fileWriteJson(check file:joinPath(outPath, ediName + ".json"), ediSchema);
         }
     }
 }
@@ -373,10 +373,11 @@ function convertSegment(string segmentName, int minOccurs, int maxOccurs, xml x1
 // Attaches the value set of a simple field or component to its schema node.
 // Inline enumerations narrow the code set for one specific position of the transaction
 // (e.g. <xs:enumeration value="1L"/> on REF01 of the member policy definition), so they are
-// marked as discriminator candidates; refineDiscriminators() keeps the mark only where sibling
-// definitions share a segment code. Named simple types resolve to the full standard code list
-// of the element (e.g. DE_128 in a shared Codes.xsd) and are attached as plain value
-// constraints, which are validated when writing EDI but never affect segment matching.
+// attached as discriminator candidates; refineDiscriminators() keeps them as discriminators
+// only where sibling definitions share a segment code, and demotes the rest to plain `values`.
+// Named simple types resolve to the full standard code list of the element (e.g. DE_128 in a
+// shared Codes.xsd) and are attached as plain `values`, which are validated when writing EDI
+// but never affect segment matching.
 function applyEnumerationValues(xml element, edi:EdiFieldSchema|edi:EdiComponentSchema nodeSchema, map<string[]> namedEnums) {
     if nodeSchema is edi:EdiFieldSchema && nodeSchema.components.length() > 0 {
         // Composite fields hold structured values; enumerations apply to their components.
@@ -386,8 +387,7 @@ function applyEnumerationValues(xml element, edi:EdiFieldSchema|edi:EdiComponent
     if inlineSimpleType.length() > 0 {
         string[] enumerationValues = readEnumerationValues(inlineSimpleType);
         if enumerationValues.length() > 0 {
-            nodeSchema.values = enumerationValues;
-            nodeSchema.discriminator = true;
+            nodeSchema.discriminator = enumerationValues;
         }
         return;
     }
@@ -398,31 +398,6 @@ function applyEnumerationValues(xml element, edi:EdiFieldSchema|edi:EdiComponent
             nodeSchema.values = namedValues.clone();
         }
     }
-}
-
-// Removes `"discriminator": false` entries from a schema JSON produced by serializing typed
-// schema records. The runtime fills the default back in when the schema is loaded, so the key
-// is pure noise — and stripping it keeps generated schemas loadable by runtime versions that
-// predate the value-constraint attributes, as long as the feature is not actually used.
-function stripDiscriminatorDefaults(json value) returns json {
-    if value is map<json> {
-        map<json> result = {};
-        foreach [string, json] [key, member] in value.entries() {
-            if key == "discriminator" && member == false {
-                continue;
-            }
-            result[key] = stripDiscriminatorDefaults(member);
-        }
-        return result;
-    }
-    if value is json[] {
-        json[] result = [];
-        foreach json member in value {
-            result.push(stripDiscriminatorDefaults(member));
-        }
-        return result;
-    }
-    return value;
 }
 
 function readEnumerationValues(xml simpleType) returns string[] {
@@ -479,16 +454,16 @@ function collectNamedEnumerationsFromDoc(xml doc, map<string[]> namedEnums) {
     }
 }
 
-// Inline enumerations are marked as discriminator candidates during conversion. This pass keeps
-// the discriminators only on definitions that need them to be told apart — those sharing a
-// segment code with a sibling definition in the same sequence — and clears the rest, leaving
-// plain value constraints that do not affect segment matching.
+// Inline enumerations are attached as discriminator candidates during conversion. This pass keeps
+// them as discriminators only on definitions that need them to be told apart — those sharing a
+// segment code with a sibling definition in the same sequence — and demotes the rest to plain
+// `values`, which do not affect segment matching.
 function refineDiscriminators(edi:EdiSegGroupSchema rootGroup, edi:EdiSchema schema) {
     map<boolean> ambiguousDefs = {};
     collectAmbiguousDefinitions(rootGroup, schema, ambiguousDefs);
     foreach [string, edi:EdiSegSchema] [defName, segDef] in schema.segmentDefinitions.entries() {
         if !ambiguousDefs.hasKey(defName) {
-            clearDiscriminators(segDef);
+            demoteDiscriminatorsToValues(segDef);
         }
     }
 }
@@ -519,13 +494,27 @@ function collectAmbiguousDefinitions(edi:EdiSegGroupSchema group, edi:EdiSchema 
     }
 }
 
-function clearDiscriminators(edi:EdiSegSchema segDef) {
+// Moves a candidate discriminator set to `values`: the codes remain as the element's legal code
+// list (validated when writing EDI) but no longer take part in segment matching.
+function demoteDiscriminatorsToValues(edi:EdiSegSchema segDef) {
     foreach edi:EdiFieldSchema fieldSchema in segDef.fields {
-        fieldSchema.discriminator = false;
+        string[]? fieldCodes = fieldSchema.discriminator;
+        if fieldCodes is string[] {
+            fieldSchema.values = fieldCodes;
+            fieldSchema.discriminator = ();
+        }
         foreach edi:EdiComponentSchema componentSchema in fieldSchema.components {
-            componentSchema.discriminator = false;
+            string[]? componentCodes = componentSchema.discriminator;
+            if componentCodes is string[] {
+                componentSchema.values = componentCodes;
+                componentSchema.discriminator = ();
+            }
             foreach edi:EdiSubcomponentSchema subcomponentSchema in componentSchema.subcomponents {
-                subcomponentSchema.discriminator = false;
+                string[]? subcomponentCodes = subcomponentSchema.discriminator;
+                if subcomponentCodes is string[] {
+                    subcomponentSchema.values = subcomponentCodes;
+                    subcomponentSchema.discriminator = ();
+                }
             }
         }
     }

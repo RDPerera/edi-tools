@@ -32,7 +32,7 @@ final readonly & json discriminatorUnionSchemaJson = {
             "minOccurances": 1,
             "fields": [
                 {"tag": "code"},
-                {"tag": "qualifier", "required": true, "values": ["0F"], "discriminator": true},
+                {"tag": "qualifier", "required": true, "discriminator": ["0F"]},
                 {"tag": "identifier", "required": true}
             ]
         },
@@ -43,7 +43,7 @@ final readonly & json discriminatorUnionSchemaJson = {
             "maxOccurances": 13,
             "fields": [
                 {"tag": "code"},
-                {"tag": "qualifier", "required": true, "values": ["17", "23", "DX"], "discriminator": true},
+                {"tag": "qualifier", "required": true, "discriminator": ["17", "23", "DX"]},
                 {"tag": "identifier", "required": true}
             ]
         },
@@ -54,7 +54,7 @@ final readonly & json discriminatorUnionSchemaJson = {
             "fields": [
                 {"tag": "code"},
                 {"tag": "REFERENCE", "required": true, "dataType": "composite", "components": [
-                    {"tag": "rffQualifier", "required": true, "values": ["VA"], "discriminator": true},
+                    {"tag": "rffQualifier", "required": true, "discriminator": ["VA"]},
                     {"tag": "number", "required": true}
                 ]}
             ]

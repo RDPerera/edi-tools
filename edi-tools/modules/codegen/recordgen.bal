@@ -126,7 +126,7 @@ function generateRecordForSegment(edi:EdiSegSchema segmap, GenContext context) r
         if emap.dataType == edi:COMPOSITE {
             balType = generateRecordForComposite(emap, context);
         } else {
-            balType = discriminatorUnionOrDefault(balType, emap.discriminator, emap.values);
+            balType = discriminatorUnionOrDefault(balType, emap.discriminator);
         }
 
         if balType is BalType {
@@ -140,7 +140,7 @@ function generateRecordForSegment(edi:EdiSegSchema segmap, GenContext context) r
 function generateRecordForComposite(edi:EdiFieldSchema emap, GenContext context) returns BalRecord {
     BalRecord newRec = new (emap.tag);
     foreach edi:EdiComponentSchema submap in emap.components {
-        BalType? balType = discriminatorUnionOrDefault(ediToBalTypes[submap.dataType], submap.discriminator, submap.values);
+        BalType? balType = discriminatorUnionOrDefault(ediToBalTypes[submap.dataType], submap.discriminator);
         if balType is BalType {
             newRec.addField(balType, submap.tag, false, !submap.required);
         }
@@ -162,7 +162,7 @@ function generateRecordForComposite(edi:EdiFieldSchema emap, GenContext context)
     string cTypeName = generateTypeName(emap.tag, context);
     BalRecord crec = new (cTypeName);
     foreach edi:EdiComponentSchema submap in emap.components {
-        BalType? balType = discriminatorUnionOrDefault(ediToBalTypes[submap.dataType], submap.discriminator, submap.values);
+        BalType? balType = discriminatorUnionOrDefault(ediToBalTypes[submap.dataType], submap.discriminator);
         if balType is BalType {
             crec.addField(balType, submap.tag, false, !submap.required);
         }
@@ -331,17 +331,17 @@ public enum BalBasicType {
     BSTRING = "string", BINT = "int", BFLOAT = "float", BBOOLEAN = "boolean"
 }
 
-// Narrows a string-typed discriminator element to a literal union of its allowed values.
+// Narrows a string-typed discriminator element to a literal union of its discriminating codes.
 // Only discriminator elements are narrowed: the parser guarantees their parsed values are
-// inside the set, so the narrowed type never rejects a parsed message. Plain `values`
-// elements keep their base type - full standard code lists can be huge, and narrowing them
+// inside the set, so the narrowed type never rejects a parsed message. Elements carrying only
+// `values` keep their base type - full standard code lists can be huge, and narrowing them
 // would reject dirty-but-parseable inbound data during record conversion.
-function discriminatorUnionOrDefault(BalType? balType, boolean discriminator, string[]? values) returns BalType? {
-    if !discriminator || balType != BSTRING {
+function discriminatorUnionOrDefault(BalType? balType, string[]? discriminator) returns BalType? {
+    if balType != BSTRING {
         return balType;
     }
-    if values is string[] && values.length() > 0 {
-        return new BalStringUnion(values);
+    if discriminator is string[] && discriminator.length() > 0 {
+        return new BalStringUnion(discriminator);
     }
     return balType;
 }
