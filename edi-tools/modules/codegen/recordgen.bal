@@ -125,6 +125,8 @@ function generateRecordForSegment(edi:EdiSegSchema segmap, GenContext context) r
 
         if emap.dataType == edi:COMPOSITE {
             balType = generateRecordForComposite(emap, context);
+        } else {
+            balType = discriminatorUnionOrDefault(balType, emap.discriminator, emap.values);
         }
 
         if balType is BalType {
@@ -138,7 +140,7 @@ function generateRecordForSegment(edi:EdiSegSchema segmap, GenContext context) r
 function generateRecordForComposite(edi:EdiFieldSchema emap, GenContext context) returns BalRecord {
     BalRecord newRec = new (emap.tag);
     foreach edi:EdiComponentSchema submap in emap.components {
-        BalType? balType = ediToBalTypes[submap.dataType];
+        BalType? balType = discriminatorUnionOrDefault(ediToBalTypes[submap.dataType], submap.discriminator, submap.values);
         if balType is BalType {
             newRec.addField(balType, submap.tag, false, !submap.required);
         }
@@ -160,7 +162,7 @@ function generateRecordForComposite(edi:EdiFieldSchema emap, GenContext context)
     string cTypeName = generateTypeName(emap.tag, context);
     BalRecord crec = new (cTypeName);
     foreach edi:EdiComponentSchema submap in emap.components {
-        BalType? balType = ediToBalTypes[submap.dataType];
+        BalType? balType = discriminatorUnionOrDefault(ediToBalTypes[submap.dataType], submap.discriminator, submap.values);
         if balType is BalType {
             crec.addField(balType, submap.tag, false, !submap.required);
         }
@@ -292,6 +294,8 @@ class BalField {
             } else {
                 typeName = t.name;
             }
+        } else if t is BalStringUnion {
+            typeName = t.toString();
         } else {
             typeName = t.toString();
         }
@@ -301,15 +305,53 @@ class BalField {
     }
 }
 
-public type BalType BalBasicType|BalRecord;
+public type BalType BalBasicType|BalRecord|BalStringUnion;
+
+# A union of string literal values, e.g. ("17"|"23"|"DX"). Generated for discriminator
+# fields: the parser guarantees a successfully parsed value is inside the set, so the
+# narrowed type can never reject a parsed message, while writing an out-of-set value
+# becomes a compile-time error.
+public class BalStringUnion {
+    string[] values;
+
+    function init(string[] values) {
+        self.values = values;
+    }
+
+    function toString() returns string {
+        string united = "";
+        foreach string value in self.values {
+            united += (united == "" ? "" : "|") + "\"" + value + "\"";
+        }
+        return "(" + united + ")";
+    }
+}
 
 public enum BalBasicType {
     BSTRING = "string", BINT = "int", BFLOAT = "float", BBOOLEAN = "boolean"
 }
 
+// Narrows a string-typed discriminator element to a literal union of its allowed values.
+// Only discriminator elements are narrowed: the parser guarantees their parsed values are
+// inside the set, so the narrowed type never rejects a parsed message. Plain `values`
+// elements keep their base type - full standard code lists can be huge, and narrowing them
+// would reject dirty-but-parseable inbound data during record conversion.
+function discriminatorUnionOrDefault(BalType? balType, boolean discriminator, string[]? values) returns BalType? {
+    if !discriminator || balType != BSTRING {
+        return balType;
+    }
+    if values is string[] && values.length() > 0 {
+        return new BalStringUnion(values);
+    }
+    return balType;
+}
+
 function compareBalTypes(BalType t1, BalType t2) returns boolean {
     if t1 is BalRecord && t2 is BalRecord {
         return t1.isEqual(t2);
+    }
+    if t1 is BalStringUnion && t2 is BalStringUnion {
+        return t1.values == t2.values;
     }
     if t1 is BalBasicType && t2 is BalBasicType {
         return t1 == t2;
