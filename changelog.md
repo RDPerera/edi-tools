@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - [Extract X12 XSD enumerations (inline and named simple types resolved through `xs:include`, e.g. a shared `Codes.xsd`) into the generated schema as `values` constraints, marking inline enumerations of same-code sibling definitions as `discriminator`s for qualifier-based segment matching](https://github.com/wso2/product-integrator/issues/2150)
 - [Read optional `values` code lists from ESL element definitions into the generated schema](https://github.com/wso2/product-integrator/issues/2150)
+
+### Fixed
+
+## [2.2.1] - 2026-08-21
+
+### Fixed
+
+- [Strip characters that are illegal in a Ballerina identifier from generated EDIFACT tags, so element names such as "United Nations Dangerous Goods (UNDG) identifier" no longer generate records that fail to compile](https://github.com/ballerina-platform/ballerina-library/issues/9065)
+- [Ship the `UGH` and `UGT` service segment definitions, which are published in the service segment directory rather than in the standard segments directory, so the messages referencing them can be converted and generated](https://github.com/ballerina-platform/ballerina-library/issues/9065)
+- [Suffix colliding sibling segment tags, so a segment listed at two positions of the same segment group no longer generates two record fields with the same name](https://github.com/ballerina-platform/ballerina-library/issues/9065)
+- [Convert only the batch message directory of an EDIFACT release, skipping the interactive messages that used to abort a whole-release conversion, and report an unconvertible message instead of discarding the run](https://github.com/ballerina-platform/ballerina-library/issues/9065)
+
+## [2.2.0] - 2026-08-03
+
+### Added
 - [Generate envelope-aware EDI schemas and typed envelope wrappers (BEP-1441)](https://github.com/ballerina-platform/ballerina-spec/issues/1441)
 - [Populate the schema envelope in X12 headers mode so `convertX12Schema -H` output works with envelope-aware APIs (BEP-1441)](https://github.com/ballerina-platform/ballerina-spec/issues/1441)
 - [Expose the envelope-aware functions in the default module of a `libgen` package (BEP-1441)](https://github.com/ballerina-platform/ballerina-spec/issues/1441)

@@ -126,12 +126,13 @@ public function main() returns error? {
 
     // Parse the full envelope hierarchy into typed records.
     ORDERSInterchange interchange = check interchangeFromEdiString(ediText);
-    foreach var txn in interchange.transactions {
-        if txn.body is error {
-            io:println("Quarantined: ", txn.body.message());
+    foreach ORDERSTransaction txn in interchange.transactions {
+        ORDERS|error body = txn.body;
+        if body is error {
+            io:println("Quarantined: ", body.message());
             continue;
         }
-        io:println(txn.body);
+        io:println(body);
     }
 
     // Serialize a (filtered/transformed) interchange back to EDI text.
@@ -165,9 +166,9 @@ import citymart/porder.m855;
 
 public function main() returns error? {
     string orderText = check io:fileReadString("orders/order10.edi");
-    m850:Purchase_Order purchaseOrder = check m850:fromEdiString(orderText);
+    m850:EDI_850_Purchase_Order purchaseOrder = check m850:fromEdiString(orderText);
     // ...
-    m855:Purchase_Order_Acknowledgement orderAck = { /* ... */ };
+    m855:EDI_855_Purchase_Order_Acknowledgement orderAck = { /* ... */ };
     string ackText = check m855:toEdiString(orderAck);
     check io:fileWriteString("acks/ack10.edi", ackText);
 }
@@ -187,7 +188,7 @@ public function main() returns error? {
     anydata headers = check porder:headersFromEdiString(orderText, porder:EDI_850);
 
     any interchange = check porder:interchangeFromEdiString(orderText, porder:EDI_850);
-    m850:Purchase_OrderInterchange typed = check interchange.ensureType();
+    m850:EDI_850_Purchase_OrderInterchange typed = check interchange.ensureType();
     io:println(typed.groups.length());
 }
 ```
@@ -254,7 +255,7 @@ Generate code from it the same way:
 bal edi codegen -i schema.json -o orders.bal
 ```
 
-For the full schema grammar — delimiters, segment groups, fields, components, sub-components, the `envelope` declaration, and additional configuration — see the [Ballerina EDI Schema Specification](https://github.com/ballerina-platform/module-ballerina-edi/blob/main/docs/specs/SchemaSpecification.md).
+For the full schema grammar — delimiters, segment groups, fields, components, sub-components, the `envelope` declaration, and additional configuration — see the [Ballerina EDI specification](https://github.com/ballerina-platform/module-ballerina-edi/blob/main/docs/spec/spec.md#7-schema-definition).
 
 ### ESL schemas
 

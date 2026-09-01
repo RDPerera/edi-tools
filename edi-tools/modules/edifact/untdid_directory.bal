@@ -71,8 +71,22 @@ function convertLocalEdifactToEdi(string version, string dir, string? messageTyp
     map<string> segmentBlocks = check readSegmentDirectory(directory.segmentDirectoryPath);
 
     SegmentDefintions allSegmentDefinitions = {};
+    string[] skipped = [];
     foreach [string, string] [code, messageFile] in directory.messageFiles.entries() {
-        check genEdiSchemaFromFile(messageFile, code, dir, allSegmentDefinitions, segmentBlocks);
+        error? result = genEdiSchemaFromFile(messageFile, code, dir, allSegmentDefinitions, segmentBlocks);
+        if result is () {
+            continue;
+        }
+        // Converting a single requested type is all-or-nothing, but one
+        // unconvertible message must not discard a whole-release conversion.
+        if messageType !is () {
+            return result;
+        }
+        skipped.push(code);
+        log:printWarn("Skipped EDI schema for " + code + ": " + result.message());
+    }
+    if skipped.length() > 0 {
+        log:printWarn(string `Skipped ${skipped.length()} message type(s): ${",".'join(...skipped)}`);
     }
 }
 
@@ -267,16 +281,34 @@ function locateUntdidFiles(string version, string inputPath, string? messageType
     string prefix = version.substring(0, 1).toUpperAscii();
     string segmentFileName = "EDSD." + release;
     string messageSuffix = "_" + prefix + "." + release;
+    // A release archive holds both the batch message directory (EDMD) and the
+    // interactive one (IDMD), and both name their files `<CODE>_D.<REL>`.
+    // Interactive messages are I-EDI: they carry UIH/UIT rather than UNH/UNT and
+    // are not batch EDIFACT, so the directory holding the interactive index is
+    // skipped. Without this, converting a whole release picks up messages such
+    // as RESRSP and fails once it reaches them.
+    string interactiveIndexName = "IDMDI1." + release;
+
+    string[] paths = check listFilesRecursively(inputPath);
+    string[] interactiveDirs = [];
+    foreach string path in paths {
+        if (check file:basename(path)).toUpperAscii() == interactiveIndexName {
+            interactiveDirs.push(check file:parentPath(path));
+        }
+    }
 
     string? segmentDirectoryPath = ();
     map<string> messageFiles = {};
-    foreach string path in check listFilesRecursively(inputPath) {
+    foreach string path in paths {
         string name = check file:basename(path);
         if name.toUpperAscii() == segmentFileName {
             segmentDirectoryPath = path;
             continue;
         }
         if !name.toUpperAscii().endsWith(messageSuffix) {
+            continue;
+        }
+        if interactiveDirs.indexOf(check file:parentPath(path)) !is () {
             continue;
         }
         string code = name.substring(0, name.length() - messageSuffix.length()).toUpperAscii();

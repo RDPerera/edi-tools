@@ -215,3 +215,40 @@ final SegmentDef DTM = {
         }
     ]
 };
+
+// UGH and UGT are ISO 9735 service segments. They are referenced by message
+// specifications (PAYDUC and JUPREQ in D03A) but are defined in the service
+// segment directory rather than the standard segments directory the converter
+// reads, so their definitions ship with the tool.
+// https://service.unece.org/trade/untdid/d03a/trsd/trsdugh.htm
+final SegmentDef UGH = {
+    code: "UGH",
+    tag: "Anti_collision_segment_group_header",
+    fields: [
+        {
+            tag: "code",
+            required: true
+        },
+        {
+            tag: "ANTI_COLLISION_SEGMENT_GROUP_IDENTIFICATION",
+            dataType: "string",
+            required: true
+        }
+    ]
+};
+
+final SegmentDef UGT = {
+    code: "UGT",
+    tag: "Anti_collision_segment_group_trailer",
+    fields: [
+        {
+            tag: "code",
+            required: true
+        },
+        {
+            tag: "ANTI_COLLISION_SEGMENT_GROUP_IDENTIFICATION",
+            dataType: "string",
+            required: true
+        }
+    ]
+};

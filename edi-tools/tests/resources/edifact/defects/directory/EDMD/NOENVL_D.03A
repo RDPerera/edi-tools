@@ -1,0 +1,19 @@
+                              UN/EDIFACT
+
+                      Draft directory for test purposes
+
+       This is not a UNECE publication. It is a hand written sample whose
+       segment table declares no UNH/UNT, so no envelope can be built for it.
+       Converting a whole release reports and skips it; asking for it by name
+       fails.
+
+4.3    Message structure
+
+4.3.1  Segment table
+
+Pos    Tag Name                                      S   R
+
+           HEADER SECTION
+
+0010   BGM Beginning of message                      M   1
+0020   NAD Name and address                          C   9

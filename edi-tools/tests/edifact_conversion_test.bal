@@ -89,3 +89,71 @@ function testMissingMessageTypeInLocalDirectory() returns error? {
         test:assertTrue(result.message().includes("ABSENT_D.03A"), "Unexpected error: " + result.message());
     }
 }
+
+const string DEFECTS_DIRECTORY = "tests/resources/edifact/defects/directory";
+
+// Regression fixture for three conversion defects that produced schemas the
+// code generator could not compile:
+//   - an element named "UNITED NATIONS DANGEROUS GOODS (UNDG) IDENTIFIER" kept
+//     its parentheses, which are illegal in a Ballerina identifier
+//   - FTX listed twice in segment group 1 produced two `Free_text` siblings,
+//     so codegen emitted two record fields with the same name
+//   - UGH and UGT are service segments that the standard segments directory
+//     does not define, so resolving them failed
+@test:Config {}
+function testEdifactConversionRepairsGeneratedTags() returns error? {
+    check edifact:convertEdifactToEdi("d03a", "tests/resources/edifact/defects", "DEFECT",
+            DEFECTS_DIRECTORY);
+
+    json expected = check io:fileReadJson("tests/resources/edifact/defects/DEFECT_expected.json");
+    json actual = check io:fileReadJson("tests/resources/edifact/defects/DEFECT.json");
+    test:assertEquals(actual, expected, "Edifact conversion of the defect fixture failed");
+    check file:remove("tests/resources/edifact/defects/DEFECT.json");
+}
+
+// A release archive holds the interactive message directory next to the batch
+// one, and both name their files `<CODE>_D.03A`. Interactive messages carry
+// UIH/UIT rather than UNH/UNT, so converting one fails; picking them up used to
+// abort a whole-release conversion after all the batch schemas had been written.
+@test:Config {}
+function testEdifactConversionSkipsInteractiveDirectory() returns error? {
+    check edifact:convertEdifactToEdi("d03a", "tests/resources/edifact/defects", (),
+            DEFECTS_DIRECTORY);
+
+    test:assertTrue(check file:test("tests/resources/edifact/defects/DEFECT.json", file:EXISTS),
+            "The batch message was not converted");
+    test:assertFalse(check file:test("tests/resources/edifact/defects/IRESP.json", file:EXISTS),
+            "An interactive message was converted as a batch message");
+    check file:remove("tests/resources/edifact/defects/DEFECT.json");
+}
+
+// The interactive directory is excluded before conversion, so this covers the
+// remaining case: a batch message that cannot be converted at all. One such
+// message must not discard the rest of a whole-release conversion.
+@test:Config {}
+function testEdifactConversionSkipsUnconvertibleMessage() returns error? {
+    check edifact:convertEdifactToEdi("d03a", "tests/resources/edifact/defects", (),
+            DEFECTS_DIRECTORY);
+
+    test:assertTrue(check file:test("tests/resources/edifact/defects/DEFECT.json", file:EXISTS),
+            "A convertible message was dropped along with the unconvertible one");
+    test:assertFalse(check file:test("tests/resources/edifact/defects/NOENVL.json", file:EXISTS),
+            "A message with no UNH/UNT in its segment table was converted");
+    check file:remove("tests/resources/edifact/defects/DEFECT.json");
+}
+
+// Asking for that message by name is all-or-nothing, so it must fail rather
+// than be skipped.
+@test:Config {}
+function testEdifactConversionFailsForRequestedUnconvertibleMessage() returns error? {
+    error? result = edifact:convertEdifactToEdi("d03a", "tests/resources/edifact/defects", "NOENVL",
+            DEFECTS_DIRECTORY);
+
+    test:assertTrue(result is error, "Requesting an unconvertible message type did not fail");
+    if result is error {
+        test:assertTrue(result.message().includes("NOENVL"),
+                "The error does not name the message type: " + result.message());
+    }
+    test:assertFalse(check file:test("tests/resources/edifact/defects/NOENVL.json", file:EXISTS),
+            "A schema was written for an unconvertible message");
+}
