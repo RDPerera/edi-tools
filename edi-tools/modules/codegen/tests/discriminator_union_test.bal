@@ -94,3 +94,32 @@ function testDiscriminatorFieldsGenerateLiteralUnions() returns error? {
     test:assertFalse(generated.includes("(\"137\"|\"17\"|\"64\")"),
         "Validation-only values lists must not be narrowed");
 }
+
+@test:Config {}
+function testDiscriminatorValuesAreEscapedInGeneratedLiterals() returns error? {
+    // Code lists come from third-party schema files: a value may legitimately contain a quote,
+    // a backslash or a line break, and inserting it verbatim would produce source that does not
+    // compile. The generated union must escape them.
+    json schemaJson = {
+        "name": "EscapeTest",
+        "delimiters": {"segment": "~", "field": "*", "component": ":"},
+        "segments": [
+            {"code": "REF", "tag": "Odd", "fields": [
+                {"tag": "code"},
+                {"tag": "q", "required": true, "discriminator": ["A\"B", "C\\D", "E\nF"]},
+                {"tag": "v", "required": true}
+            ]}
+        ]
+    };
+    string tmpDir = check file:createTempDir();
+    string outputPath = check file:joinPath(tmpDir, "escape_gen.bal");
+    check generateCodeForSchema(schemaJson, outputPath);
+    string generated = check io:fileReadString(outputPath);
+    check file:remove(tmpDir, file:RECURSIVE);
+
+    test:assertTrue(generated.includes("\\\""), "a quote in a code must be escaped");
+    test:assertTrue(generated.includes("\\\\"), "a backslash in a code must be escaped");
+    test:assertTrue(generated.includes("\\n"), "a line break in a code must be escaped");
+    // The raw, unescaped forms must not reach the generated source.
+    test:assertFalse(generated.includes("\"A\"B\""), "unescaped quote must not appear in the union");
+}

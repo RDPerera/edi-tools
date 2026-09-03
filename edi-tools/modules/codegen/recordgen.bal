@@ -321,10 +321,33 @@ public class BalStringUnion {
     function toString() returns string {
         string united = "";
         foreach string value in self.values {
-            united += (united == "" ? "" : "|") + "\"" + value + "\"";
+            united += (united == "" ? "" : "|") + "\"" + escapeForBalString(value) + "\"";
         }
         return "(" + united + ")";
     }
+}
+
+// Escapes a schema value so it is a valid Ballerina string literal. Code lists come from
+// third-party schema files, so a value may legitimately contain a quote, a backslash, or a
+// line break; inserted verbatim, any of those would produce source that does not compile.
+function escapeForBalString(string value) returns string {
+    string escaped = "";
+    foreach string:Char c in value {
+        if c == "\\" {
+            escaped += "\\\\";
+        } else if c == "\"" {
+            escaped += "\\\"";
+        } else if c == "\n" {
+            escaped += "\\n";
+        } else if c == "\r" {
+            escaped += "\\r";
+        } else if c == "\t" {
+            escaped += "\\t";
+        } else {
+            escaped += c;
+        }
+    }
+    return escaped;
 }
 
 public enum BalBasicType {
