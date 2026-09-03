@@ -138,6 +138,7 @@ version = "0.1.0"
     string mainBal = string `
 import compilecheck.mx12 as _;
 import compilecheck.mdisc as _;
+import compilecheck.mesc as _;
 
 public function main() {
 }
@@ -150,6 +151,10 @@ public function main() {
     check generateCodeForSchema(x12EnvelopeSchemaJson, check file:joinPath(x12ModulePath, "rate_gen.bal"));
     // Discriminator fields generate string-literal union types; compile them too.
     check generateCodeForSchema(discriminatorUnionSchemaJson, check file:joinPath(discModulePath, "disc_gen.bal"));
+    // Codes needing escaping must also produce source that compiles.
+    string escModulePath = check file:joinPath(pkgPath, "modules", "mesc");
+    check file:createDir(escModulePath, file:RECURSIVE);
+    check generateCodeForSchema(escapedValuesSchemaJson, check file:joinPath(escModulePath, "esc_gen.bal"));
 
     // Prefer the intermediate distribution's `bal` (exported by the gradle
     // build via BALLERINA_DIST_BIN); fall back to the system `bal` for ad-hoc
